@@ -4,7 +4,9 @@ import json
 import random
 from itertools import combinations
 from transformers import AutoTokenizer, AutoModelForMaskedLM
+import spacy
 
+nlp = spacy.load("en_core_web_sm")
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 
 Question = namedtuple('question',['text','target','substitutes'])
@@ -184,33 +186,35 @@ class DialougeEnv:
     
     def get_option_words_by_llm(self):
         # state,info = test_env.reset()
+        # h0 =self.history[0]
         h0 = self.history[0]
-        
-        mask_show = ''
-        solo_mask = h0.text.replace(h0.target,'<mask>',1)
+        mask_text_doc = nlp(h0.text)
         mask_text = ''
-        for i,(word,score) in enumerate(h0.substitutes[:5]):
-            if len(h0.text)*6<2100:
-                text = h0.text
+        for sentence in mask_text_doc.sents:
+            # print(sentence.text)
+            if h0.target in sentence.text:
+                words = [h0.target,*[w for w,score in h0.substitutes[:7]],'<mask>']
+                random.shuffle(words)
+                sub_sentence_text = ".".join([sentence.text.replace(h0.target,w,1) for w in words])
+                mask_text += sub_sentence_text
             else:
-                subtract_len = len(h0.text)-350
-                index = h0.text.index(h0.target)
-                if i%2==0:
-                    pre_sub_index = min(0+subtract_len,index-20)
-                    text = h0.text[pre_sub_index:]
+                mask_text += sentence.text
+        if len(tokenizer(mask_text)['input_ids'])>512:
+            mask_text = ''
+            for sentence in mask_text_doc.sents:
+                # print(sentence.text)
+                if h0.target in sentence.text:
+                    parts = sentence.text.split(",")
+                    mask_idx = [i for i,p in enumerate(parts) if (h0.target in p)][0]
+                    words = [h0.target,*[w for w,score in h0.substitutes[:5]],'<mask>']
+                    random.shuffle(words)
+                    sub_sentence_text = ",".join([parts[mask_idx].replace(h0.target,w,1) for w in words])
+                    parts[mask_idx] = sub_sentence_text
+                    mask_text += ' '.join(parts)
                 else:
-                    post_sub_index = max(len(h0.text)-subtract_len,index+20)
-                    text = h0.text[:post_sub_index]
-
-            if len(self.model.tokenizer(mask_text+text+solo_mask)['input_ids'])>500:
-                break
-            mask_text += text.replace(h0.target,word,1)
-            mask_show += text.replace(h0.target,f"\033[31m{word}\033[0m",1)+'\033[31m<\nnewline>\033[0m'
-
-        mask_text  += solo_mask
-        mask_show += h0.text.replace(h0.target,f"\033[31m<mask>\033[0m",1)
-        words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
-        return words
+                    mask_text += sentence.text
+            words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
+            return words
     
     def bot_utterance(self,action,target):
         option_words = self.get_option_words_by_llm()

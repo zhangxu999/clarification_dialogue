@@ -25,8 +25,8 @@ def plot_durations(show_result=False):
         else:
             display.display(plt.gcf())
             
-            
-            
-def plot_returns(return_list):
+
+
+
     
     
