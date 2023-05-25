@@ -183,38 +183,54 @@ class DialougeEnv:
         return answer_reward
         
         
+    def generate_prompt(self,text,target,substitutes):
+        mask_text_doc = nlp(text)
+        mask_text = ''
+        found = False
+        for sentence in mask_text_doc.sents:
+            # print(sentence.text)
+            if (target in sentence.text) and (found is False):
+                found = True
+                words = [target,*substitutes[:5], '<mask>']
+                sub_sentence_text = ".".join([sentence.text.replace(target,w,1) for w in words])
+                mask_text += sub_sentence_text
+            else:
+                mask_text += sentence.text
+            if len(tokenizer(mask_text)['input_ids'])>512:
+                mask_text = ''
+                for sentence in mask_text_doc.sents:
+                    # print(sentence.text)
+                    if (target in sentence.text):
+                        parts = sentence.text.split(",")
+                        mask_idx = [i for i,p in enumerate(parts) if (target in p)][0]
+                        words = [target,*substitutes[:5],'<mask>']
+                        sub_sentence_text = ",".join([parts[mask_idx].replace(target,w,1) for w in words])
+                        parts[mask_idx] = sub_sentence_text
+                        mask_text += ' '.join(parts)
+                    else:
+                        mask_text += sentence.text
+        while len(tokenizer(mask_text)['input_ids'])>500:
+            mask_text = mask_text[:len(mask_text)-10]
+            if '<mask>' not in mask_text:
+                mask_text = ('<mask>' + mask_text)
+
+        return mask_text
+        
+        
     
     def get_option_words_by_llm(self):
         # state,info = test_env.reset()
         # h0 =self.history[0]
+        
         h0 = self.history[0]
-        mask_text_doc = nlp(h0.text)
-        mask_text = ''
-        for sentence in mask_text_doc.sents:
-            # print(sentence.text)
-            if h0.target in sentence.text:
-                words = [h0.target,*[w for w,score in h0.substitutes[:7]],'<mask>']
-                random.shuffle(words)
-                sub_sentence_text = ".".join([sentence.text.replace(h0.target,w,1) for w in words])
-                mask_text += sub_sentence_text
-            else:
-                mask_text += sentence.text
-        if len(tokenizer(mask_text)['input_ids'])>512:
-            mask_text = ''
-            for sentence in mask_text_doc.sents:
-                # print(sentence.text)
-                if h0.target in sentence.text:
-                    parts = sentence.text.split(",")
-                    mask_idx = [i for i,p in enumerate(parts) if (h0.target in p)][0]
-                    words = [h0.target,*[w for w,score in h0.substitutes[:5]],'<mask>']
-                    random.shuffle(words)
-                    sub_sentence_text = ",".join([parts[mask_idx].replace(h0.target,w,1) for w in words])
-                    parts[mask_idx] = sub_sentence_text
-                    mask_text += ' '.join(parts)
-                else:
-                    mask_text += sentence.text
-            words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
-            return words
+        mask_text = self.generate_prompt(h0.text,h0.target,[w for w,score in h0.substitutes])
+        try:
+            optional_words = self.mask_model(mask_text)
+            new_words = [(token['token_str'],round(token['score'],3)) for token in optional_words]
+        except Exception as e:
+            print(mask_text)
+            print(optional_words)
+        return new_words
     
     def bot_utterance(self,action,target):
         option_words = self.get_option_words_by_llm()
