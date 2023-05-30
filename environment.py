@@ -12,7 +12,7 @@ tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 # Question = namedtuple('question',['text','extra'])
 # Question = namedtuple('question',['text','target','substitutes'])
 class OriginAgent:
-    def __init__(self,file_path='../data/swords/swords-v1.1_dev.json.gz'):
+    def __init__(self,file_path='data/swords-v1.1_dev.json.gz'):
         with gzip.open(file_path, 'r') as f:
             swords = json.load(f)        
         for key,value in swords['substitute_labels'].items():
