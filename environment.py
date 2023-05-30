@@ -9,12 +9,12 @@ import spacy
 nlp = spacy.load("en_core_web_sm")
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 
-Question = namedtuple('question',['text','target','substitutes'])
+# Question = namedtuple('question',['text','extra'])
+# Question = namedtuple('question',['text','target','substitutes'])
 class OriginAgent:
     def __init__(self,file_path='../data/swords/swords-v1.1_dev.json.gz'):
         with gzip.open(file_path, 'r') as f:
             swords = json.load(f)        
-
         for key,value in swords['substitute_labels'].items():
             swords['substitutes'][key]['labels'] = value
             swords['substitutes'][key]['label_score'] = value.count('TRUE')/len(value)
@@ -31,7 +31,6 @@ class OriginAgent:
             if 'targets' not in swords['contexts'][context_id]:
                 swords['contexts'][context_id]['targets'] = []
             swords['contexts'][context_id]['targets'].append(value)
-            
         self.contexts = swords['contexts']
         
         self.context_ids = list(self.contexts.keys())
@@ -44,13 +43,15 @@ class OriginAgent:
         
         target = self.contexts[context_id]['targets'][0]
         target_text = target['target']
-        
+        offset = target['offset']
         
         substitutes = [(sub['substitute'],sub['label_score']) for sub in target['substitutes']]
         sorted_subs = sorted(substitutes,key=lambda x:x[1],reverse=True)
 
         # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_id]]
-        return Question(context,target_text , sorted_subs)
+        question = {'text':context, 'target':target_text, 'substitutes':sorted_subs,'offset':offset}
+        
+        return question,context_id
     
     def answer(self):
         context = self.sample()[0]
@@ -92,6 +93,7 @@ class DialougeEnv:
         self.history = []
         self.substitutes = None
         self.target = None
+        self.context_id = None
         self.contexts = agent.contexts
         
         self.understand_score = 0
@@ -184,37 +186,48 @@ class DialougeEnv:
         
         
     
-    def get_option_words_by_llm(self):
-        # state,info = test_env.reset()
+    def get_option_words_by_llm(self,context_id):
+        # state, info = test_env.reset()
         # h0 =self.history[0]
-        h0 = self.history[0]
-        mask_text_doc = nlp(h0.text)
-        mask_text = ''
-        for sentence in mask_text_doc.sents:
-            # print(sentence.text)
-            if h0.target in sentence.text:
-                words = [h0.target,*[w for w,score in h0.substitutes[:7]],'<mask>']
-                random.shuffle(words)
-                sub_sentence_text = ".".join([sentence.text.replace(h0.target,w,1) for w in words])
-                mask_text += sub_sentence_text
+        
+        
+        def repeat_part(sent,target,substitutes,trunck=False):
+            rep_list = []
+            substitutes = [w for w,s in substitutes[:5]]
+            for sub in [target]+substitutes+['<mask>']:
+                start = offset-30 if trunck else 0
+                repeat_part = f"{sent.text[start:offset-sent.start_char]}{sub}{sent.text[offset-sent.start_char+len(target):]}"
+                rep_list.append(repeat_part)
+            return '.'.join(rep_list)
+
+        h0,_ = self.OA.sample(context_id)
+        # h0 = self.history[0]
+        
+        offset = h0['offset']
+        mask_sentence_list = []
+        for sent in nlp(h0['text']).sents:
+            if sent.start_char <= offset <sent.end_char:
+                sent_text = repeat_part(sent, h0['target'], h0['substitutes'])
+                mask_sentence_list.append(sent_text)
             else:
-                mask_text += sentence.text
-        if len(tokenizer(mask_text)['input_ids'])>512:
-            mask_text = ''
-            for sentence in mask_text_doc.sents:
-                # print(sentence.text)
-                if h0.target in sentence.text:
-                    parts = sentence.text.split(",")
-                    mask_idx = [i for i,p in enumerate(parts) if (h0.target in p)][0]
-                    words = [h0.target,*[w for w,score in h0.substitutes[:5]],'<mask>']
-                    random.shuffle(words)
-                    sub_sentence_text = ",".join([parts[mask_idx].replace(h0.target,w,1) for w in words])
-                    parts[mask_idx] = sub_sentence_text
-                    mask_text += ' '.join(parts)
+                mask_sentence_list.append(sent.text)
+
+        mask_text = ''.join(mask_sentence_list)
+        token_lens = len(tokenizer(''.join(mask_text))['input_ids'])
+        
+        if token_lens>512:
+            mask_sentence_list = []
+            for sent in nlp(h0['text']).sents:
+                if sent.start_char <= offset <sent.end_char:
+                    sent_text = repeat_part(sent, h0['target'], h0['substitutes'],True)
+                    # print('-------------')
+                    mask_sentence_list.append(sent_text)
                 else:
-                    mask_text += sentence.text
-            words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
-            return words
+                    mask_sentence_list.append(sent.text)
+            mask_text = ''.join(mask_sentence_list)
+            token_lens = len(tokenizer(''.join(mask_text))['input_ids'])                
+        words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
+        return words
     
     def bot_utterance(self,action,target):
         option_words = self.get_option_words_by_llm()
@@ -237,38 +250,51 @@ class DialougeEnv:
         observation, reward, terminated, truncated
         '''
         
-        target = self.history[0].target
-        substitutes = words = [a for a,b in self.history[0].substitutes]
+        target = self.history[0]['target']
+        substitutes = words = [a for a,b in self.history[0]['substitutes']]
         
         bot_text, option_words = self.bot_utterance(action,target)
-        bot_utter = Question(bot_text,None,option_words)
+        bot_utter = {'text':bot_text, 'option_words':option_words}
         answer_reward = self.user_utterance(action, target, option_words)
         user_text = answer_reward['answer']
         user_reward = answer_reward['reward']
-        user_utter = Question(user_text,None,None)
-
+        user_utter = {'text':user_text}
+        
         self.history.append(bot_utter)
         self.history.append(user_utter)
-        history_text = '</s>'.join([q.text for q in self.history])
+        history_text = '</s>'.join([q['text'] for q in self.history])
         embedding = self.model.encode(history_text)
-
+        
         terminated = (action == 0)
         truncated =  len(self.history)> 9
+        
         
         reward = user_reward - 0.1  # Length penalty
         if terminated and user_reward>0:
             reward += 1
         return embedding, reward, terminated, truncated,{}
-                
+    
+    def get_best_action(self):
+        option_words = self.get_option_words_by_llm(self.context_id)
+        should_no_action = self.should_no_action(option)
+        should_confirm = self.should_confirm(option)
+        should_opt = self.should_opt(option)
+        should_explain = self.should_explain(option)
+        
+        right_action = [should_no_action, should_confirm, should_opt, should_explain]
+        
+        return right_action
+        
             
     
     def reset(self,context_id=None):
         self.history.clear()
-        question = self.OA.sample(context_id)
-        self.substitutes = question.substitutes
-        self.target = question.target
+        question,context_id = self.OA.sample(context_id)
+        self.context_id = context_id
+        self.substitutes = question['substitutes']
+        self.target = question['target']
         self.history.append(question)
-        user_text = question[0]
+        user_text = question['text']
         embedding = self.model.encode(user_text)
         # encoding and embedding
         info = {}
