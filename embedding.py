@@ -7,9 +7,9 @@ class EmbeddingModel:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
     
-    # @lru_cache(3000)
+    @lru_cache(10000)
     def encode(self,text):
-        encoded_input = self.tokenizer(text,return_tensors='pt')
+        encoded_input = self.tokenizer(text,return_tensors='pt',max_length=512,truncation=True)
         output = self.model(**encoded_input)
-        return output.last_hidden_state[0][0]
+        return output.last_hidden_state[0][0].detach().numpy()
     

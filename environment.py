@@ -5,7 +5,9 @@ import random
 from itertools import combinations
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 import spacy
-
+import pickle
+import copy
+import numpy as np
 nlp = spacy.load("en_core_web_sm")
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 
@@ -49,7 +51,7 @@ class OriginAgent:
         sorted_subs = sorted(substitutes,key=lambda x:x[1],reverse=True)
 
         # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_id]]
-        question = {'text':context, 'target':target_text, 'substitutes':sorted_subs,'offset':offset}
+        question = {'text':context, 'target':target_text, 'substitutes':sorted_subs,'offset':offset,'role':'user'}
         
         return question,context_id
     
@@ -103,39 +105,53 @@ class DialougeEnv:
             True:{
                 'answer':'',
                 'reward':2,
+                'terminated':True
             },
             False:{
                 'answer':" you misunderstdood my words, I mean...",
-                'reward': -2
+                'reward': -2,
+                'terminated':True
+                
         }},
         Action.CONFIRM.value:{
             True:{
                 'answer':'Yes, it is',
-                'reward': 1.5
+                'reward': 1.5,
+                'terminated':True
             },
             False:{
                 'answer':"No, it is not ",
-                'reward': -1.5
+                'reward': -1.5,
+                'terminated':False
         }},
         Action.OPTION.value:{
             True:{
                 'answer':None,
                 'reward':1,
+                'terminated':True
             },
             False:{
                 'answer':" none of these",
-                'reward': -1
+                'reward': -1,
+                'terminated':False
         }},
         Action.EXPLAIN.value:{
             True:{
                 'answer':"the explain content",
                 'reward':0.5,
+                'terminated':False
             },
             False:{
-                'answer':"the explain content",
-                'reward': -0.5  ##  -1
+                'answer':"it is obviously, but I will try explain it too",
+                'reward': -0.5,
+                'terminated':True
         }}
         }
+        with open('state.pkl','rb') as f:
+            self.state_mapping = pickle.load(f)
+        with open('option.pkl','rb') as f:
+            self.option_mapping = pickle.load(f)
+            
 
     
     def should_no_action(self,option_words):
@@ -165,30 +181,49 @@ class DialougeEnv:
         
     def user_utterance(self,action,target,option_words):
         
-         
+        
         reward_table = self.reward_table
-        if action == Action.NO_ACTION.value:
-            is_right_action = self.should_no_action(option_words)
-            answer_reward = reward_table[action][is_right_action]
-        elif action == Action.CONFIRM.value:
-            is_right_action = self.should_confirm(option_words)
-            answer_reward = reward_table[action][is_right_action]
-        elif action == Action.OPTION.value:
-            is_right_action = self.should_opt(option_words)
-            answer_reward = reward_table[action][is_right_action]
+        should_function = [self.should_no_action, self.should_confirm,self.should_opt,self.should_explain]
+        
+        right_action = [f(option_words) for f in should_function].index(True)
+        is_right_action = (action == right_action)
+        
+        answer_reward = reward_table[action][is_right_action]
+        if action == Action.OPTION.value:
             answer = f'{random.choice(option_words)[0]}' if is_right_action else 'none of these'
             answer_reward['answer'] = answer
-        else:
-            is_right_action = self.should_explain(option_words)
-            answer_reward = reward_table[action][is_right_action]
+
         
+        # if action == Action.NO_ACTION.value:
+        #     is_right_action = self.should_no_action(option_words)
+        #     answer_reward = reward_table[action][is_right_action]
+        # elif action == Action.CONFIRM.value:
+        #     is_right_action = self.should_confirm(option_words)
+        #     answer_reward = reward_table[action][is_right_action]
+        # elif action == Action.OPTION.value:
+        #     is_right_action = self.should_opt(option_words)
+        #     answer_reward = reward_table[action][is_right_action]
+        #     answer = f'{random.choice(option_words)[0]}' if is_right_action else 'none of these'
+        #     answer_reward['answer'] = answer
+        # else:
+        #     is_right_action = self.should_explain(option_words)
+        #     answer_reward = reward_table[action][is_right_action]
+            
+        answer_reward = copy.copy(answer_reward)
+        answer_reward['is_right_action'] = is_right_action
+        answer_reward['loose_right_actions'] = self.get_best_action()
         return answer_reward
         
         
     
-    def get_option_words_by_llm(self,context_id):
-        # state, info = test_env.reset()
-        # h0 =self.history[0]
+    def get_option_words_by_llm(self,context_id,use_cache=True):
+        '''
+        Please do not arbitrarily alter this function.
+        if so, remember updating the cache.
+        '''
+        
+        if (context_id in self.option_mapping) and use_cache:
+            return self.option_mapping[context_id]
         
         
         def repeat_part(sent,target,substitutes,trunck=False):
@@ -196,7 +231,9 @@ class DialougeEnv:
             substitutes = [w for w,s in substitutes[:5]]
             for sub in [target]+substitutes+['<mask>']:
                 start = offset-30 if trunck else 0
-                repeat_part = f"{sent.text[start:offset-sent.start_char]}{sub}{sent.text[offset-sent.start_char+len(target):]}"
+                post_start = offset-sent.start_char+len(target)
+                post_end = post_start+30 if trunck else  100000000
+                repeat_part = f"{sent.text[start:offset-sent.start_char]}{sub}{sent.text[post_start:post_end]}"
                 rep_list.append(repeat_part)
             return '.'.join(rep_list)
 
@@ -227,10 +264,11 @@ class DialougeEnv:
             mask_text = ''.join(mask_sentence_list)
             token_lens = len(tokenizer(''.join(mask_text))['input_ids'])                
         words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
-        return words
+        return words,mask_text
     
     def bot_utterance(self,action,target):
-        option_words = self.get_option_words_by_llm()
+        
+        option_words = self.history[0]['option_words']
         if action == Action.NO_ACTION.value:
             text = ''
         elif action == Action.CONFIRM.value:
@@ -254,48 +292,61 @@ class DialougeEnv:
         substitutes = words = [a for a,b in self.history[0]['substitutes']]
         
         bot_text, option_words = self.bot_utterance(action,target)
-        bot_utter = {'text':bot_text, 'option_words':option_words}
+        
+        
         answer_reward = self.user_utterance(action, target, option_words)
         user_text = answer_reward['answer']
         user_reward = answer_reward['reward']
-        user_utter = {'text':user_text}
         
+        
+        
+        
+        terminated = answer_reward['terminated']
+        truncated =  len(self.history)> 9
+        reward = user_reward - 0.1  # Length penalty
+        if terminated and answer_reward['is_right_action']:
+            reward += 1
+
+            
+        bot_utter = {'text':bot_text, 'option_words':option_words,'action':action,'role':'bot'}
         self.history.append(bot_utter)
+        user_utter = {'text':user_text,'reward':user_reward, 'is_right_action': answer_reward['is_right_action'],'loose_right_actions':answer_reward['loose_right_actions'],'role':'user'}
         self.history.append(user_utter)
+        
         history_text = '</s>'.join([q['text'] for q in self.history])
         embedding = self.model.encode(history_text)
-        
-        terminated = (action == 0)
-        truncated =  len(self.history)> 9
-        
-        
-        reward = user_reward - 0.1  # Length penalty
-        if terminated and user_reward>0:
-            reward += 1
+        self.history[-1]['history_text'] = history_text
         return embedding, reward, terminated, truncated,{}
     
     def get_best_action(self):
-        option_words = self.get_option_words_by_llm(self.context_id)
-        should_no_action = self.should_no_action(option)
-        should_confirm = self.should_confirm(option)
-        should_opt = self.should_opt(option)
-        should_explain = self.should_explain(option)
+        option_words = self.history[0]['option_words']
+        should_no_action = self.should_no_action(option_words)
+        should_confirm = self.should_confirm(option_words)
+        should_opt = self.should_opt(option_words)
+        should_explain = self.should_explain(option_words)
         
         right_action = [should_no_action, should_confirm, should_opt, should_explain]
-        
-        return right_action
+        return np.argwhere(right_action).reshape(-1)
         
             
     
     def reset(self,context_id=None):
         self.history.clear()
+        info = {}
+
         question,context_id = self.OA.sample(context_id)
+        option_words,mask_text = self.get_option_words_by_llm(context_id)
+        question['option_words'] = option_words
+        question['mask_text'] = mask_text
+
         self.context_id = context_id
         self.substitutes = question['substitutes']
         self.target = question['target']
         self.history.append(question)
         user_text = question['text']
-        embedding = self.model.encode(user_text)
+        if context_id in self.state_mapping:
+            embedding = self.state_mapping[context_id]
+        else:
+            embedding = self.model.encode(user_text)
         # encoding and embedding
-        info = {}
         return embedding, info
