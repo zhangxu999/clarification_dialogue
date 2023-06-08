@@ -10,6 +10,9 @@ import copy
 import numpy as np
 nlp = spacy.load("en_core_web_sm")
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
+from nltk.stem import WordNetLemmatizer
+
+lemmatizer = WordNetLemmatizer()
 
 # Question = namedtuple('question',['text','extra'])
 # Question = namedtuple('question',['text','target','substitutes'])
@@ -45,13 +48,18 @@ class OriginAgent:
         
         target = self.contexts[context_id]['targets'][0]
         target_text = target['target']
+        lemma_target = lemmatizer.lemmatize(target_text)
+        
         offset = target['offset']
         
         substitutes = [(sub['substitute'],sub['label_score']) for sub in target['substitutes']]
         sorted_subs = sorted(substitutes,key=lambda x:x[1],reverse=True)
+        sorted_subs = [(w,s) for w,s in sorted_subs if len(w.split())==1][:10]
+        lemma_subs = [(lemmatizer.lemmatize(w),s) for (w,s) in sorted_subs]
 
         # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_id]]
-        question = {'text':context, 'target':target_text, 'substitutes':sorted_subs,'offset':offset,'role':'user'}
+        question = {'text':context, 'target':target_text, 'lemma_target':lemma_target
+                    ,'substitutes':sorted_subs,'lemma_subs':lemma_subs,'offset':offset,'role':'user'}
         
         return question,context_id
     
@@ -97,6 +105,8 @@ class DialougeEnv:
         self.target = None
         self.context_id = None
         self.contexts = agent.contexts
+        
+
         
         self.understand_score = 0
         
@@ -160,27 +170,26 @@ class DialougeEnv:
         
     def should_confirm(self,option_words):
         words = [word for word,score in option_words]
-        sub_words = [word for word,score in self.substitutes if score >0.1]
+        sub_words = [word for word,score in self.lemma_subs if score >0.1]
         is_in_subwords = words[0] in sub_words
         gap = option_words[0][1] - option_words[1][1]
         return is_in_subwords and gap>0.4
             
     
     def should_opt(self,option_words):
-        sub_words = [word for word,score in self.substitutes if score > 0]
+        sub_words = [word for word,score in self.lemma_subs if score > 0]
         words = [word for word,score in option_words]
         return bool(set(words) & set(sub_words))
         
     
     def should_explain(self,option_words):
-        sub_words = [word for word,score in self.substitutes if score > 0]
+        sub_words = [word for word,score in self.lemma_subs if score > 0]
         words = [word for word,score in option_words]
         return not bool(set(words) & set(sub_words))
  
     
         
     def user_utterance(self,action,target,option_words):
-        
         
         reward_table = self.reward_table
         should_function = [self.should_no_action, self.should_confirm,self.should_opt,self.should_explain]
@@ -214,13 +223,25 @@ class DialougeEnv:
         answer_reward['loose_right_actions'] = self.get_best_action()
         return answer_reward
         
-        
     
     def get_option_words_by_llm(self,context_id,use_cache=True):
         '''
         Please do not arbitrarily alter this function.
         if so, remember updating the cache.
         '''
+        filter_words = '''</s>
+        .
+        ..
+        ?
+        s
+        ''
+        !”
+        .”
+        ”
+        nos
+        mr
+        ve
+        '''.split()+ ['']
         
         if (context_id in self.option_mapping) and use_cache:
             return self.option_mapping[context_id]
@@ -228,14 +249,14 @@ class DialougeEnv:
         
         def repeat_part(sent,target,substitutes,trunck=False):
             rep_list = []
-            substitutes = [w for w,s in substitutes[:5]]
+            substitutes = [w for w,s in substitutes if len(w.split())==1][:5]
             for sub in [target]+substitutes+['<mask>']:
                 start = offset-30 if trunck else 0
                 post_start = offset-sent.start_char+len(target)
-                post_end = post_start+30 if trunck else  100000000
+                post_end = post_start+30 if trunck else 100000000
                 repeat_part = f"{sent.text[start:offset-sent.start_char]}{sub}{sent.text[post_start:post_end]}"
                 rep_list.append(repeat_part)
-            return '.'.join(rep_list)
+            return ' '.join(rep_list)
 
         h0,_ = self.OA.sample(context_id)
         # h0 = self.history[0]
@@ -249,8 +270,8 @@ class DialougeEnv:
             else:
                 mask_sentence_list.append(sent.text)
 
-        mask_text = ''.join(mask_sentence_list)
-        token_lens = len(tokenizer(''.join(mask_text))['input_ids'])
+        mask_text = ' '.join(mask_sentence_list)
+        token_lens = len(tokenizer(' '.join(mask_text))['input_ids'])
         
         if token_lens>512:
             mask_sentence_list = []
@@ -262,9 +283,12 @@ class DialougeEnv:
                 else:
                     mask_sentence_list.append(sent.text)
             mask_text = ''.join(mask_sentence_list)
-            token_lens = len(tokenizer(''.join(mask_text))['input_ids'])                
-        words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text)]
-        return words,mask_text
+            token_lens = len(tokenizer(''.join(mask_text))['input_ids'])
+        origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
+        words = [(w,s) for w,s in origin_words if w not in filter_words]
+        lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:10]]
+        # print(origin_words,'-----------------\n',words,'------------------\n',lemmatized_words)
+        return lemmatized_words, mask_text
     
     def bot_utterance(self,action,target):
         
@@ -335,13 +359,15 @@ class DialougeEnv:
         info = {}
 
         question,context_id = self.OA.sample(context_id)
-        option_words,mask_text = self.get_option_words_by_llm(context_id)
+        option_words,mask_text = self.get_option_words_by_llm(context_id,use_cache=True)
         question['option_words'] = option_words
         question['mask_text'] = mask_text
 
         self.context_id = context_id
         self.substitutes = question['substitutes']
+        self.lemma_subs = question['lemma_subs']
         self.target = question['target']
+        self.lemma_target = question['lemma_target']
         self.history.append(question)
         user_text = question['text']
         if context_id in self.state_mapping:
