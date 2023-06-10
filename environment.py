@@ -41,7 +41,7 @@ class OriginAgent:
         self.context_ids = list(self.contexts.keys())
     
     
-    def sample(self,context_id=None):
+    def sample(self,context_id=None,subs_num=10):
         if context_id is None:
             context_id = random.choice(self.context_ids)
         context = self.contexts[context_id]['context']
@@ -54,7 +54,7 @@ class OriginAgent:
         
         substitutes = [(sub['substitute'],sub['label_score']) for sub in target['substitutes']]
         sorted_subs = sorted(substitutes,key=lambda x:x[1],reverse=True)
-        sorted_subs = [(w,s) for w,s in sorted_subs if len(w.split())==1][:10]
+        sorted_subs = [(w,s) for w,s in sorted_subs if len(w.split())==1][:subs_num]
         lemma_subs = [(lemmatizer.lemmatize(w),s) for (w,s) in sorted_subs]
 
         # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_id]]
@@ -224,7 +224,7 @@ class DialougeEnv:
         return answer_reward
         
     
-    def get_option_words_by_llm(self,context_id,use_cache=True):
+    def get_option_words_by_llm(self,context_id,use_cache=True, options_num=10):
         '''
         Please do not arbitrarily alter this function.
         if so, remember updating the cache.
@@ -249,7 +249,7 @@ class DialougeEnv:
         
         def repeat_part(sent,target,substitutes,trunck=False):
             rep_list = []
-            substitutes = [w for w,s in substitutes if len(w.split())==1][:5]
+            substitutes = [w for w,s in substitutes if len(w.split())==1]
             for sub in [target]+substitutes+['<mask>']:
                 start = offset-30 if trunck else 0
                 post_start = offset-sent.start_char+len(target)
@@ -286,7 +286,7 @@ class DialougeEnv:
             token_lens = len(tokenizer(''.join(mask_text))['input_ids'])
         origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
         words = [(w,s) for w,s in origin_words if w not in filter_words]
-        lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:10]]
+        lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:options_num]]
         # print(origin_words,'-----------------\n',words,'------------------\n',lemmatized_words)
         return lemmatized_words, mask_text
     
@@ -358,8 +358,8 @@ class DialougeEnv:
         self.history.clear()
         info = {}
 
-        question,context_id = self.OA.sample(context_id)
-        option_words,mask_text = self.get_option_words_by_llm(context_id,use_cache=True)
+        question,context_id = self.OA.sample(context_id,subs_num=5)
+        option_words,mask_text = self.get_option_words_by_llm(context_id,use_cache=True,options_num=5)
         question['option_words'] = option_words
         question['mask_text'] = mask_text
 
