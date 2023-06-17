@@ -1,3 +1,27 @@
+# 定义一个枚举类型
+from enum import Enum
+
+class Action(Enum):
+    NO_ACTION = 0
+    CONFIRM = 1
+    OPTION = 2
+    EXPLAIN = 3
+
+    
+filter_words = '''</s>
+        .
+        ..
+        ?
+        s
+        ''
+        !”
+        .”
+        ”
+        nos
+        mr
+        ve
+        '''.split()+ ['']
+
 reward_table = {
         Action.NO_ACTION.value:{
             True:{

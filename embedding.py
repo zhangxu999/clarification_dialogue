@@ -2,8 +2,8 @@ from transformers import AutoTokenizer, AutoModelForMaskedLM,AutoModel
 from functools import lru_cache
 
 class EmbeddingModel:
-    def __init__(self):
-        model_name = 'xlm-roberta-base'
+    def __init__(self,model_name = 'xlm-roberta-base'):
+        
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
     

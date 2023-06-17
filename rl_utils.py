@@ -16,15 +16,16 @@ class PriorityQueue:
 
     def pop(self):
         return heapq.heappop(self._queue)[-1]
+        return 
     
-    def smallest():
-        return  heapq.nsmallest(1, self._queue)[-1]
+    def smallest(self):
+        return heapq.nsmallest(1, self._queue)[0][-1]
 
 
 def plot_durations(show_result=False):
     plt.figure(1)
     durations_t = torch.tensor(episode_durations, dtype=torch.float)
-    if show_result:plt
+    if show_result:
         plt.title('Result')
     else:
         plt.clf()
