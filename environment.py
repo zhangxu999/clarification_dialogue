@@ -159,9 +159,10 @@ class Agent:
     
     def __init__(self):
         self.asked_words = []
-        self.option_words = PriorityQueue()
+        self.option_words = None
         
     def push_option_words(self,option_words):
+        self.option_words = PriorityQueue()
         for w, s in option_words:
             self.option_words.push((w,s),-1*s)
         
@@ -199,7 +200,9 @@ class Agent:
 
 class DialougeEnv:
     
-    def __init__(self,dataset, model, mask_model, length_penalty=0.1,max_length=9):
+    def __init__(self,dataset, model, mask_model,device, length_penalty=0.1,max_length=9):
+        
+        self.device = device
         
         self.length_penalty = length_penalty
         self.max_length = max_length
@@ -297,7 +300,6 @@ class DialougeEnv:
         observation, reward, terminated, truncated
         '''
         target = self.history[0]['target']
-        substitutes = words = [a for a,b in self.history[0]['substitutes']]
         agent_response = self.agent.utterance(action,target)
         
         action = agent_response['action']
