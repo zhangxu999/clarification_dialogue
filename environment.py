@@ -115,7 +115,12 @@ class User:
         return self.find_subs
         
     def is_right_action(self, action, option_words):
-        if action ==Action.NO_ACTION.value:
+
+        
+        if len(option_words)==0:
+            is_right = False
+            
+        elif action ==Action.NO_ACTION.value:
             is_right = option_words[0] == self.target
             if is_right:
                 self.find_subs = True
@@ -126,8 +131,10 @@ class User:
         else:
             is_right = all([w not in self.highscore_subs for w in option_words])
         
-        reward_list = [3, 2, 1, 0.5]
+        
+        reward_list = [3, 2, 1, 0]
         reward = reward_list[action]
+
         if not is_right:
             reward *=-1
         
@@ -160,38 +167,48 @@ class Agent:
     def __init__(self):
         self.asked_words = []
         self.option_words = None
-        
+      
     def push_option_words(self,option_words):
         self.option_words = PriorityQueue()
         for w, s in option_words:
             self.option_words.push((w,s),-1*s)
+        # print('-----------------------------------')
+        # print([c[0] for a,b,c in self.option_words._queue])
         
     def utterance(self,action,target):
+        # print(action, [c[0] for a,b,c in self.option_words._queue])
         words = []
         if action == Action.NO_ACTION.value:
             text = f"I'm pretty sure of the meaning of the word {target} . "
-            word,score= self.option_words.smallest()
-            words.append(word)
+            if not self.option_words.is_empty():
+                word,score = self.option_words.smallest()
+                words.append(word)
         elif action == Action.CONFIRM.value:
 
             if not self.option_words.is_empty():
                 word,score = self.option_words.pop()
                 self.asked_words.append(word)
                 words.append(word)
-            text = f"The word {target} is not clear to me. Do you mean something like {word} by this?"
+            if len(words)>0:
+                text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
+            else:
+                text = f" there is no enough words to discuss."
         elif action == Action.OPTION.value:
-
             for i in range(3):
                 if not self.option_words.is_empty():
                     word,score = self.option_words.pop()
                     self.asked_words.append(word)
                     words.append(word)
-            text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} ?"
+            if len(words)>0:
+                text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
+            else:
+                text = f" there is no enough words to discuss."
         elif action == Action.EXPLAIN.value:
 
             text = f"The word {target} is not clear to me. Could you please provide me more context?"
-            word,score = self.option_words.smallest()
-            words.append(word)
+            if not self.option_words.is_empty():
+                word,score = self.option_words.pop()
+                words.append(word)
 
         bot_response = dict(action=action,text=text,option_words=words)
         return bot_response
@@ -200,7 +217,7 @@ class Agent:
 
 class DialougeEnv:
     
-    def __init__(self,dataset, model, mask_model,device, length_penalty=0.1,max_length=9):
+    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9):
         
         self.device = device
         
@@ -307,7 +324,6 @@ class DialougeEnv:
         user_response = self.user.utterance(action, option_words)
         user_text = user_response['answer']
         user_reward = user_response['reward']
-        
         
         terminated = user_response['terminated']
         truncated =  len(self.history) > self.max_length

@@ -46,6 +46,13 @@ class DQN(nn.Module):
         self.layer1 = nn.Linear(n_observations, 128)
         self.layer2 = nn.Linear(128, 128)
         self.layer3 = nn.Linear(128, n_actions)
+        
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0.0, std=0.05)
+                nn.init.constant_(m.bias, 0.1)
+
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -69,6 +76,7 @@ class RLModel:
         n_observations = len(state)
 
         self.policy_net = DQN(n_observations, n_actions).to(device)
+        self.policy_net.initialize_weights()
         self.target_net = DQN(n_observations, n_actions).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LR, amsgrad=True)
@@ -192,7 +200,7 @@ class RLModel:
                     break
             
             self.writer.add_scalar('train/returns_episode', returns, i_episode)
-            if i_episode%500==0:
+            if i_episode%500==50:
                 test_episodes_list, Rewards, accurate_match_rate = self.evaluate(self.test_env,eva_tag='eva test:')
                 self.writer.add_scalar('test/Rewards_all', Rewards, self.steps_done)
                 self.writer.add_scalar('test/accurate_match_rate', accurate_match_rate, i_episode)
@@ -206,7 +214,7 @@ class RLModel:
         episodes_list = []
         if size is None:
             size = len(eva_env.dataset.contexts)
-        for context_id in tqdm.tqdm(eva_env.dataset.context_ids[:size],desc=eva_tag,mininterval=3):
+        for context_id in tqdm.tqdm(eva_env.dataset.context_ids[:size],desc=eva_tag,mininterval=10):
             state, info = eva_env.reset(context_id)
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             for t in count():
