@@ -92,6 +92,8 @@ class User:
         self.find_subs = False
     
     def init_dialoag(self,context_id=None,subs_num=10):
+        self.find_subs = False
+        
         if context_id is None:
             context_id = random.choice(self.context_ids)
         context = self.contexts[context_id]['context']
@@ -168,15 +170,15 @@ class User:
             words = [w for w in option_words if w in self.highscore_subs]
             answer = f'{",".join(words)}' if is_right else 'none of these'
         
-        return is_right, reward, terminated, answer
+        return is_right, reward, terminated, answer, self.find_subs
 
     def utterance(self,action, option_words):
         # should_function = [self.should_no_action, self.should_confirm, self.should_opt, self.should_explain]
         
-        is_right_action,reward,terminated, answer = self.is_right_action(action,option_words)
+        is_right_action,reward,terminated, answer,find_subs = self.is_right_action(action,option_words)
         
         
-        answer_reward = dict(reward=reward,terminated=terminated,text=answer, is_right_action=is_right_action)
+        answer_reward = dict(reward=reward,terminated=terminated,text=answer, is_right_action=is_right_action,find_subs=find_subs)
         # answer_reward['reward'] = reward
         # answer_reward['is_right_action'] = is_right_action
         
@@ -203,7 +205,7 @@ class Agent:
         if action == Action.NO_ACTION.value:
             text = f"I'm pretty sure of the meaning of the word {target} . "
             if not self.option_words.is_empty():
-                word,score = self.option_words.smallest()
+                word,score = self.option_words.pop()
                 words.append(word)
         elif action == Action.CONFIRM.value:
 
@@ -239,12 +241,14 @@ class Agent:
 
 class DialougeEnv:
     
-    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9):
+    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9,Debug=False):
         
         self.device = device
         
         self.length_penalty = length_penalty
         self.max_length = max_length
+        
+        self.Debug = Debug
         
         self.dataset = dataset
         self.user = User(dataset)
@@ -362,9 +366,10 @@ class DialougeEnv:
         user_response['reward'] = reward
         user_response['reward_detail']  = reward_detail
         self.history.append(user_response)
-        print("-------------------")
-        print(agent_response)
-        print(user_response)
+        if self.Debug:
+            print("-------------------")
+            print(agent_response)
+            print(user_response)
 
 
         history_text = '</s>'.join([q['text'] for q in self.history])
@@ -408,9 +413,9 @@ class DialougeEnv:
         # else:
         #     embedding = self.model.encode(embedding_text)
         # encoding and embedding
-        
-        print("#################################################################")
-        print(self.target,self.lemma_target)
-        print(self.lemma_subs[:10])
-        print(option_words)
+        if self.Debug:
+            print("#################################################################")
+            print(self.target,self.lemma_target)
+            print(self.lemma_subs[:10])
+            print(option_words)
         return embedding, info

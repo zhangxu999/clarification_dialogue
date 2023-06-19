@@ -18,7 +18,7 @@ class PriorityQueue:
         return heapq.heappop(self._queue)[-1]
     
     def topn(self,n):
-        top_words = heapq.nsmallest(n,train_env.agent.option_words._queue)
+        top_words = heapq.nsmallest(n,self._queue)
         return [w for (p,idx,(w,s)) in top_words]
 
 
