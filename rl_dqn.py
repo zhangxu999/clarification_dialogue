@@ -178,10 +178,11 @@ class RLModel:
                 reward = torch.tensor([reward], device= self.device)
                 returns += reward
                 done = terminated or truncated
-                if terminated:
-                    next_state = None
-                else:
-                    next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+                # if terminated:
+                #     next_state = None
+                # else:
+                #     next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+                next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
                 # Store the transition in memory
                 self.memory.push(state, action, next_state, reward)
                 # Move to the next state

@@ -16,10 +16,10 @@ class PriorityQueue:
 
     def pop(self):
         return heapq.heappop(self._queue)[-1]
-        return 
     
-    def smallest(self):
-        return heapq.nsmallest(1, self._queue)[0][-1]
+    def topn(self,n):
+        top_words = heapq.nsmallest(n,train_env.agent.option_words._queue)
+        return [w for (p,idx,(w,s)) in top_words]
 
 
 def plot_durations(show_result=False):

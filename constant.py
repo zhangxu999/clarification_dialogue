@@ -10,6 +10,7 @@ class Action(Enum):
     
 filter_words = '''</s>
         .
+        ...
         ..
         ?
         s

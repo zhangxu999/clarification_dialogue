@@ -106,6 +106,8 @@ class User:
         # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_sub_maps = }
         self.lemma_sub_maps = {k:v for k,v in self.lemma_subs}
         self.highscore_subs = {k:v for k,v in self.lemma_subs[:5]}
+        
+        self.highscore_subs[self.lemma_target] = 1.5
         question = {'text':context, 'target':target_text, 'lemma_target':lemma_target
                     ,'substitutes':sorted_subs,'lemma_subs':lemma_subs,'offset':offset,'role':'user'}
         return question, context_id
@@ -366,6 +368,10 @@ class DialougeEnv:
 
 
         history_text = '</s>'.join([q['text'] for q in self.history])
+        topn_words = self.agent.option_words.topn(3)
+        
+        history_text = f"{history_text}</s>{''.join(topn_words)}"
+        
         embedding = self.model.encode(history_text)
         # self.history[-1]['history_text'] = history_text
         return embedding, reward, terminated, truncated, {}
@@ -393,10 +399,14 @@ class DialougeEnv:
         self.lemma_target = question['lemma_target']
         self.history.append(question)
         user_text = question['text']
-        if context_id in self.state_mapping:
-            embedding = self.state_mapping[context_id]
-        else:
-            embedding = self.model.encode(user_text)
+        
+        embedding_text = f"{user_text}</s>{option_words[:3]}"
+        embedding = self.model.encode(embedding_text)
+        
+        # if context_id in self.state_mapping:
+        #     embedding = self.state_mapping[context_id]
+        # else:
+        #     embedding = self.model.encode(embedding_text)
         # encoding and embedding
         
         print("#################################################################")
