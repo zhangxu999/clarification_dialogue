@@ -406,9 +406,10 @@ class DialougeEnv:
         self.target = question['target']
         self.lemma_target = question['lemma_target']
         self.history.append(question)
-        user_text = question['text']
+        embedding_text = question['text']
+        topn_words = self.agent.option_words.topn(3)
         
-        embedding_text = f"{user_text}</s>{option_words[:3]}"
+        embedding_text = f"{embedding_text}</s>{''.join(topn_words)}"
         embedding = self.model.encode(embedding_text)
         
         # if context_id in self.state_mapping:

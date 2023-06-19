@@ -212,8 +212,8 @@ class RLModel:
                 train_episodes_list, train_Rewards, train_accurate_match_rate = self.evaluate(self.env,eva_tag='eva train:')
                 self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
                 self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
-                print(f"test reward(sum of test set: {test_Rewards}", f"test accurate_match_rate: {round(test_accurate_match_rate,3)}")
-                print(f"train reward(sum of test set: {train_Rewards}", f"train accurate_match_rate: {round(train_accurate_match_rate,3)}")
+                print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}")
+                print(f"train reward:{train_Rewards}", f"accurate_rate: {round(train_accurate_match_rate,3)}")
 
         return test_episodes_list, train_episodes_list
     
@@ -222,7 +222,7 @@ class RLModel:
         episodes_list = []
         if size is None:
             size = len(eva_env.dataset.contexts)
-        for context_id in tqdm.tqdm(eva_env.dataset.context_ids[:size],desc=eva_tag,mininterval=10):
+        for context_id in eva_env.dataset.context_ids[:size]:
             state, info = eva_env.reset(context_id)
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             for t in count():
