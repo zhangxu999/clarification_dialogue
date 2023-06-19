@@ -158,9 +158,10 @@ class RLModel:
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
 
-    def train(self, num_episodes=3000,start_episodes=0):
+    def train(self, num_episodes=3000,start_episodes=0,evaluate=True):
         return_list = []
         episodes_list = []
+        test_episodes_list, train_episodes_list = None, None
         
         for i_episode in tqdm.tqdm(range(start_episodes,start_episodes+num_episodes),desc='RL Training'):
             # Initialize the environment and get it's state
@@ -200,7 +201,7 @@ class RLModel:
                     break
             
             self.writer.add_scalar('train/returns_episode', returns, i_episode)
-            if i_episode%500==50:
+            if evaluate and i_episode%500==0:
                 test_episodes_list, Rewards, accurate_match_rate = self.evaluate(self.test_env,eva_tag='eva test:')
                 self.writer.add_scalar('test/Rewards_all', Rewards, self.steps_done)
                 self.writer.add_scalar('test/accurate_match_rate', accurate_match_rate, i_episode)

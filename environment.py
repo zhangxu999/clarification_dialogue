@@ -106,15 +106,24 @@ class User:
         self.lemma_subs = lemma_subs = [(lemmatizer.lemmatize(w),s) for (w,s) in sorted_subs]
         # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_sub_maps = }
         self.lemma_sub_maps = {k:v for k,v in self.lemma_subs}
-        self.highscore_subs = {k:v for k,v in self.lemma_subs if v >= 0.7}
+        self.highscore_subs = {k:v for k,v in self.lemma_subs[:5]}
         question = {'text':context, 'target':target_text, 'lemma_target':lemma_target
                     ,'substitutes':sorted_subs,'lemma_subs':lemma_subs,'offset':offset,'role':'user'}
         return question, context_id
     
     def is_find_subs(self):
         return self.find_subs
+    
+    
         
     def is_right_action(self, action, option_words):
+        
+        '''
+        terminated 条件：
+        1. 找到了target，或high substitutes,
+        2. options words 用完了
+        3. 长度超过限度
+        '''
 
         
         if len(option_words)==0:
@@ -137,27 +146,41 @@ class User:
 
         if not is_right:
             reward *=-1
+            
+            
+        terminated_table = [[True, True],
+                            [False, True],
+                            [False, True],
+                            [False, False]]
+        if len(option_words)==0:
+            terminated = True
+        else:
+            terminated = terminated_table[action][int(is_right)]
         
-        return is_right, reward
-
-    def utterance(self,action, option_words):
-        reward_table = self.reward_table
-        # should_function = [self.should_no_action, self.should_confirm, self.should_opt, self.should_explain]
+        answer_table = [[" you misunderstdood my words, I mean...",''],
+          ['No, it is not','Yes, it is'],
+          ["none of these",f"the first"],
+          ["it is obviously, but I will try explain it too","the explain content"]]
+        answer = answer_table[action][int(is_right)]
         
-        is_right_action,reward = self.is_right_action(action,option_words)
-        
-        answer_reward = reward_table[action][is_right_action]
+        # answer_reward = reward_table[action][is_right_action]
         if action == Action.OPTION.value:
             words = [w for w in option_words if w in self.highscore_subs]
-            answer = f'{",".join(words)}' if is_right_action else 'none of these'
-            answer_reward['answer'] = answer
+            answer = f'{",".join(words)}' if is_right else 'none of these'
         
-        answer_reward = copy.copy(answer_reward)
-        answer_reward['reward'] = reward
-        answer_reward['is_right_action'] = is_right_action
+        return is_right, reward, terminated, answer
+
+    def utterance(self,action, option_words):
+        # reward_table = self.reward_table
+        # should_function = [self.should_no_action, self.should_confirm, self.should_opt, self.should_explain]
+        
+        is_right_action,reward,terminated, answer = self.is_right_action(action,option_words)
         
         
-        # answer_reward['loose_right_actions'] = self.get_best_action()
+        answer_reward = dict(reward=reward,terminated=terminated,text=answer, is_right_action=is_right_action)
+        # answer_reward['reward'] = reward
+        # answer_reward['is_right_action'] = is_right_action
+        
         return answer_reward
     
     
@@ -318,40 +341,36 @@ class DialougeEnv:
         '''
         target = self.history[0]['target']
         agent_response = self.agent.utterance(action,target)
-        
+        agent_response['role'] = 'bot'
+        self.history.append(agent_response)
+
+
         action = agent_response['action']
         option_words = agent_response['option_words']
         user_response = self.user.utterance(action, option_words)
-        user_text = user_response['answer']
-        user_reward = user_response['reward']
-        
-        terminated = user_response['terminated']
+        user_response['role'] = 'user'
+
         truncated =  len(self.history) > self.max_length
-        reward = user_reward - self.length_penalty  # Length penalty
-        terminated = (terminated or truncated)
+        terminated = (user_response['terminated'] or truncated)
+        reward_detail = {'action_reward':user_response['reward'],
+                         'length_penalty':self.length_penalty
+                        }
+        reward = user_response['reward'] - self.length_penalty  # Length penalty
         if terminated and self.user.is_find_subs():
+            reward_detail['find_subs'] = 3
             reward += 3
-        
-        
-        
-        bot_utter = {'text':agent_response['text'], 
-                     'option_words':option_words,
-                     'action':action,
-                     'role':'bot'
-                    }
-        self.history.append(bot_utter)
-        user_utter = {'text':user_response['answer'],
-                      'reward':user_response['reward'],
-                      'is_right_action': user_response['is_right_action'],
-                      'role':'user'}
-        self.history.append(user_utter)
-        # print(bot_utter)
-        # print(user_utter)
-        # print("-------------------------------")
-        
+        user_response['terminated'] = terminated
+        user_response['reward'] = reward
+        user_response['reward_detail']  = reward_detail
+        self.history.append(user_response)
+        print("-------------------")
+        print(agent_response)
+        print(user_response)
+
+
         history_text = '</s>'.join([q['text'] for q in self.history])
         embedding = self.model.encode(history_text)
-        self.history[-1]['history_text'] = history_text
+        # self.history[-1]['history_text'] = history_text
         return embedding, reward, terminated, truncated, {}
             
             
@@ -359,10 +378,9 @@ class DialougeEnv:
     def reset(self,context_id=None):
         self.history.clear()
         info = {}
-
-        question,context_id = self.user.init_dialoag(context_id,subs_num=5)
-        option_words,mask_text = self.get_option_words_by_llm(context_id,use_cache=True,options_num=5)
         
+        question,context_id = self.user.init_dialoag(context_id,subs_num=15)
+        option_words,mask_text = self.get_option_words_by_llm(context_id,use_cache=True,options_num=5)
         
         self.agent.push_option_words(option_words)
         question['option_words'] = option_words
@@ -383,4 +401,9 @@ class DialougeEnv:
         else:
             embedding = self.model.encode(user_text)
         # encoding and embedding
+        
+        print("#################################################################")
+        print(self.target,self.lemma_target)
+        print(self.lemma_subs[:10])
+        print(option_words)
         return embedding, info
