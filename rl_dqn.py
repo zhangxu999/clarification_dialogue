@@ -160,7 +160,8 @@ class RLModel:
 
     def train(self, num_episodes=3000,start_episodes=0,evaluate=True,debug=False):
         self.env.set_debug(debug)
-        
+        self.test_env.set_debug(debug)
+
         return_list = []
         episodes_list = []
         test_episodes_list, train_episodes_list = None, None
@@ -205,12 +206,15 @@ class RLModel:
             
             self.writer.add_scalar('train/returns_episode', returns, i_episode)
             if evaluate and i_episode%500==0:
-                test_episodes_list, Rewards, accurate_match_rate = self.evaluate(self.test_env,eva_tag='eva test:')
-                self.writer.add_scalar('test/Rewards_all', Rewards, self.steps_done)
-                self.writer.add_scalar('test/accurate_match_rate', accurate_match_rate, i_episode)
-                train_episodes_list, Rewards, accurate_match_rate = self.evaluate(self.env,eva_tag='eva train:')
-                self.writer.add_scalar('train/Rewards_all', Rewards, self.steps_done)
-                self.writer.add_scalar('train/accurate_match_rate', accurate_match_rate, i_episode)
+                test_episodes_list, test_Rewards, test_accurate_match_rate = self.evaluate(self.test_env,eva_tag='eva test:')
+                self.writer.add_scalar('test/Rewards_all', test_Rewards, self.steps_done)
+                self.writer.add_scalar('test/accurate_match_rate', test_accurate_match_rate, i_episode)
+                train_episodes_list, train_Rewards, train_accurate_match_rate = self.evaluate(self.env,eva_tag='eva train:')
+                self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
+                self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
+                print(f"test reward(sum of test set: {test_Rewards}", f"test accurate_match_rate: {round(test_accurate_match_rate,3)}")
+                print(f"train reward(sum of test set: {train_Rewards}", f"train accurate_match_rate: {round(train_accurate_match_rate,3)}")
+
         return test_episodes_list, train_episodes_list
     
     def evaluate(self,eva_env,size=None,eva_tag=''):
@@ -244,5 +248,4 @@ class RLModel:
                 if 'is_right_action' in utter:
                     accurate_match.append(utter['is_right_action'])
         accurate_match_rate = np.array(accurate_match).sum() / len(accurate_match)
-        print(Rewards, accurate_match_rate)
         return episodes_list, Rewards, accurate_match_rate
