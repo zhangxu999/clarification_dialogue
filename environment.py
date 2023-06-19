@@ -241,14 +241,14 @@ class Agent:
 
 class DialougeEnv:
     
-    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9,Debug=False):
+    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9,debug=False):
         
         self.device = device
         
         self.length_penalty = length_penalty
         self.max_length = max_length
         
-        self.Debug = Debug
+        self.debug = debug
         
         self.dataset = dataset
         self.user = User(dataset)
@@ -281,6 +281,9 @@ class DialougeEnv:
             self.state_mapping = pickle.load(f)
         with open('data/option.pkl','rb') as f:
             self.option_mapping = pickle.load(f)
+            
+    def set_debug(self,debug):
+        self.debug=debug
                     
     
     def get_option_words_by_llm(self,context_id,use_cache=True, options_num=10):
@@ -366,7 +369,7 @@ class DialougeEnv:
         user_response['reward'] = reward
         user_response['reward_detail']  = reward_detail
         self.history.append(user_response)
-        if self.Debug:
+        if self.debug:
             print("-------------------")
             print(agent_response)
             print(user_response)
@@ -413,7 +416,7 @@ class DialougeEnv:
         # else:
         #     embedding = self.model.encode(embedding_text)
         # encoding and embedding
-        if self.Debug:
+        if self.debug:
             print("#################################################################")
             print(self.target,self.lemma_target)
             print(self.lemma_subs[:10])

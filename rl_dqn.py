@@ -158,7 +158,9 @@ class RLModel:
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
 
-    def train(self, num_episodes=3000,start_episodes=0,evaluate=True):
+    def train(self, num_episodes=3000,start_episodes=0,evaluate=True,debug=False):
+        self.env.set_debug(debug)
+        
         return_list = []
         episodes_list = []
         test_episodes_list, train_episodes_list = None, None
