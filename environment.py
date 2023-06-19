@@ -77,7 +77,7 @@ class Dataset:
         return context[:20]
         
         
-from constant import reward_table, Action
+from constant import Action
 
 class User:
     
@@ -85,7 +85,6 @@ class User:
         self.data_agent = data_agent
         self.contexts = data_agent.contexts
         self.context_ids = list(self.contexts.keys())
-        self.reward_table = reward_table
         self.target = None
         self.lemma_subs = []
         self.best_word = (None,0)
@@ -130,7 +129,7 @@ class User:
             is_right = False
             
         elif action ==Action.NO_ACTION.value:
-            is_right = option_words[0] == self.target
+            is_right = option_words[0] == self.lemma_target
             if is_right:
                 self.find_subs = True
         elif action in (Action.CONFIRM.value, Action.OPTION.value):
@@ -163,7 +162,6 @@ class User:
           ["it is obviously, but I will try explain it too","the explain content"]]
         answer = answer_table[action][int(is_right)]
         
-        # answer_reward = reward_table[action][is_right_action]
         if action == Action.OPTION.value:
             words = [w for w in option_words if w in self.highscore_subs]
             answer = f'{",".join(words)}' if is_right else 'none of these'
@@ -171,7 +169,6 @@ class User:
         return is_right, reward, terminated, answer
 
     def utterance(self,action, option_words):
-        # reward_table = self.reward_table
         # should_function = [self.should_no_action, self.should_confirm, self.should_opt, self.should_explain]
         
         is_right_action,reward,terminated, answer = self.is_right_action(action,option_words)
