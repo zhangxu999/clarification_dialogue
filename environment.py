@@ -285,54 +285,81 @@ class DialougeEnv:
     def set_debug(self,debug):
         self.debug=debug
                     
-    
-    def get_option_words_by_llm(self,context_id,use_cache=True, options_num=10):
+    def generate_mask_text(self, text, offset, target, substitutes, more_context=False):
+        def split_doc(text, offset):
+            pre_list = []
+            post_list = []
+            target_sentence = None
+            is_pre_sent = True
+            pre_tokens = []
+            post_tokens = []
+            target_token = None
+            is_pre_token =True
+
+            for sent in nlp(text).sents:
+                if sent.start_char <= offset <sent.end_char:
+                    target_sentence = sent
+                    sen_offset = offset - target_sentence.start_char
+
+                    is_pre_sent = False
+                    for token in target_sentence:
+                        if token.idx-target_sentence.start_char==sen_offset:
+                            target_token = token
+                            is_pre_token = False
+                        else:
+                            if is_pre_token:
+                                pre_tokens.append(token)
+                            else:
+                                post_tokens.append(token)
+                    # sent_text = repeat_part(sent, h0['target'], h0['substitutes'][:5])
+                    # mask_sentence_list.append(sent_text)
+                else:
+                    if is_pre_sent:
+                        pre_list.append(sent)
+                    else:
+                        post_list.append(sent)
+            return pre_list,target_sentence, post_list, pre_tokens, target_token, post_tokens
+
+        pre_list,target_sentence, post_list, pre_tokens, target_token, post_tokens = split_doc(text,offset)
+
+        extend = 0
+        while True:
+            items = []
+            subs = [w for w,s in substitutes]
+            for sub in [target,*subs, '</mask>']:
+                pre_part = pre_tokens[extend:]
+                post_part = post_tokens[:len(post_tokens) - extend]
+                pre_part = ' '.join([t.text for t in pre_part])
+                post_part = ' '.join([t.text for t in post_part])
+                one_item = f"{pre_part} {sub} {post_part}".strip()
+                if (not one_item.endswith(',')) and (not one_item.endswith('.')):
+                    one_item += ','
+                items.append(one_item)
+            mask_text = ' '.join(items)
+            if more_context:
+                pre_sent = ''.join([sent.text for sent in pre_list])
+                post_sent = ''.join([sent.text for sent in post_list])
+                mask_text = f"{pre_sent} {mask_text} {post_sent}"
+            token_lens = len(tokenizer(mask_text)['input_ids'])
+            print(extend, token_lens)
+            extend += 1
+            if token_lens <=512:
+                break
+        return mask_text
+
+    def get_option_words_by_llm(self,question,use_cache=True, options_num=10):
         '''
         Please do not arbitrarily alter this function.
         if so, remember updating the cache.
         '''
 
-        if (context_id in self.option_mapping) and use_cache:
-            return self.option_mapping[context_id]
+        # if (context_id in self.option_mapping) and use_cache:
+        #     return self.option_mapping[context_id]
+        
+        text, offset, target, substitutes = question['text'], question['offset'], question['target'], question['substitutes'][:5]
+        mask_text = self.generate_mask_text(text, offset, target, substitutes)
         
         
-        def repeat_part(sent,target,substitutes,trunck=False):
-            rep_list = []
-            substitutes = [w for w,s in substitutes if len(w.split())==1]
-            for sub in [target]+substitutes+['<mask>']:
-                start = offset-30 if trunck else 0
-                post_start = offset-sent.start_char+len(target)
-                post_end = post_start+30 if trunck else 100000000
-                repeat_part = f"{sent.text[start:offset-sent.start_char]}{sub}{sent.text[post_start:post_end]}"
-                rep_list.append(repeat_part)
-            return ' '.join(rep_list)
-
-        h0,_ = self.OA.sample(context_id)
-        # h0 = self.history[0]
-        
-        offset = h0['offset']
-        mask_sentence_list = []
-        for sent in nlp(h0['text']).sents:
-            if sent.start_char <= offset <sent.end_char:
-                sent_text = repeat_part(sent, h0['target'], h0['substitutes'])
-                mask_sentence_list.append(sent_text)
-            else:
-                mask_sentence_list.append(sent.text)
-
-        mask_text = ' '.join(mask_sentence_list)
-        token_lens = len(tokenizer(' '.join(mask_text))['input_ids'])
-        
-        if token_lens>512:
-            mask_sentence_list = []
-            for sent in nlp(h0['text']).sents:
-                if sent.start_char <= offset <sent.end_char:
-                    sent_text = repeat_part(sent, h0['target'], h0['substitutes'],True)
-                    # print('-------------')
-                    mask_sentence_list.append(sent_text)
-                else:
-                    mask_sentence_list.append(sent.text)
-            mask_text = ''.join(mask_sentence_list)
-            token_lens = len(tokenizer(''.join(mask_text))['input_ids'])
         origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
         words = [(w,s) for w,s in origin_words if w not in constant.filter_words]
         lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:options_num]]
@@ -391,7 +418,8 @@ class DialougeEnv:
         info = {}
         
         question,context_id = self.user.init_dialoag(context_id,subs_num=15)
-        option_words,mask_text = self.get_option_words_by_llm(context_id,use_cache=True,options_num=5)
+        
+        option_words,mask_text = self.get_option_words_by_llm(question,use_cache=True,options_num=5)
         
         self.agent.push_option_words(option_words)
         question['option_words'] = option_words
