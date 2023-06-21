@@ -357,8 +357,8 @@ class DialougeEnv:
 
     
     @lru_cache(10000)
-    def get_mask_words(mask_text, top_k):
-        origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
+    def get_mask_words(self,mask_text, top_k):
+        origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=top_k)]
         return origin_words
     
     
