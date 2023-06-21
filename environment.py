@@ -125,7 +125,7 @@ class User:
         terminated 条件：
         1. 找到了target，或high substitutes,
         2. options words 用完了
-        3. 长度超过限度
+        3. 长度超过限度 
         '''
 
         
@@ -163,12 +163,13 @@ class User:
         answer_table = [[" you misunderstdood my words, I mean...",''],
           ['No, it is not','Yes, it is'],
           ["none of these",f"the first"],
-          ["it is obviously, but I will try explain it too","the explain content"]]
+          ["it is obviously, but I will try explain it too","sure"]]
         answer = answer_table[action][int(is_right)]
         
         if action == Action.OPTION.value:
             words = [w for w in option_words if w in self.highscore_subs]
             answer = f'{",".join(words)}' if is_right else 'none of these'
+            
         
         return is_right, reward, terminated, answer, self.find_subs
 
@@ -195,7 +196,8 @@ class Agent:
     def push_option_words(self,option_words):
         self.option_words = PriorityQueue()
         for w, s in option_words:
-            self.option_words.push((w,s),-1*s)
+            if w not in self.asked_words:
+                self.option_words.push((w,s),-1*s)
         # print('-----------------------------------')
         # print([c[0] for a,b,c in self.option_words._queue])
         
@@ -207,6 +209,7 @@ class Agent:
             if not self.option_words.is_empty():
                 word,score = self.option_words.pop()
                 words.append(word)
+                self.asked_words.append(word)
         elif action == Action.CONFIRM.value:
 
             if not self.option_words.is_empty():
@@ -233,9 +236,12 @@ class Agent:
             if not self.option_words.is_empty():
                 word,score = self.option_words.pop()
                 words.append(word)
+                self.asked_words.append(word)
 
         bot_response = dict(action=action,text=text,option_words=words)
         return bot_response
+        
+
         
         
 
@@ -276,6 +282,7 @@ class DialougeEnv:
         self.target = None
         self.context_id = None
         self.contexts = dataset.contexts
+        self.context_info = None
         
         with open('data/state.pkl','rb') as f:
             self.state_mapping = pickle.load(f)
@@ -297,7 +304,7 @@ class DialougeEnv:
             is_pre_token =True
 
             for sent in nlp(text).sents:
-                if sent.start_char <= offset <sent.end_char:
+                if sent.start_char <= offset < sent.end_char:
                     target_sentence = sent
                     sen_offset = offset - target_sentence.start_char
 
@@ -326,7 +333,7 @@ class DialougeEnv:
         while True:
             items = []
             subs = [w for w,s in substitutes]
-            for sub in [target,*subs, '</mask>']:
+            for sub in [target,*subs, '<mask>']:
                 pre_part = pre_tokens[extend:]
                 post_part = post_tokens[:len(post_tokens) - extend]
                 pre_part = ' '.join([t.text for t in pre_part])
@@ -341,13 +348,12 @@ class DialougeEnv:
                 post_sent = ''.join([sent.text for sent in post_list])
                 mask_text = f"{pre_sent} {mask_text} {post_sent}"
             token_lens = len(tokenizer(mask_text)['input_ids'])
-            print(extend, token_lens)
             extend += 1
             if token_lens <=512:
                 break
         return mask_text
 
-    def get_option_words_by_llm(self,question,use_cache=True, options_num=10):
+    def get_option_words_by_llm(self,question,use_cache=True, options_num=10,more_context=False):
         '''
         Please do not arbitrarily alter this function.
         if so, remember updating the cache.
@@ -357,7 +363,7 @@ class DialougeEnv:
         #     return self.option_mapping[context_id]
         
         text, offset, target, substitutes = question['text'], question['offset'], question['target'], question['substitutes'][:5]
-        mask_text = self.generate_mask_text(text, offset, target, substitutes)
+        mask_text = self.generate_mask_text(text, offset, target, substitutes,more_context)
         
         
         origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
@@ -382,8 +388,16 @@ class DialougeEnv:
         option_words = agent_response['option_words']
         user_response = self.user.utterance(action, option_words)
         user_response['role'] = 'user'
+        
+        if action == Action.EXPLAIN.value:
+            new_option_words, mask_text = self.get_option_words_by_llm(self.context_info, more_context=True)
+            self.agent.push_option_words(new_option_words)
+            self.context_info['option_words'] = option_words
+            self.context_info['mask_text'] = mask_text
 
-        truncated =  len(self.history) > self.max_length
+            
+
+        truncated =  len(self.history) > self.max_length 
         terminated = (user_response['terminated'] or truncated)
         reward_detail = {'action_reward':user_response['reward'],
                          'length_penalty':self.length_penalty
@@ -404,9 +418,8 @@ class DialougeEnv:
 
         history_text = '</s>'.join([q['text'] for q in self.history])
         topn_words = self.agent.option_words.topn(3)
-        
         history_text = f"{history_text}</s>{''.join(topn_words)}"
-        
+
         embedding = self.model.encode(history_text)
         # self.history[-1]['history_text'] = history_text
         return embedding, reward, terminated, truncated, {}
@@ -417,24 +430,26 @@ class DialougeEnv:
         self.history.clear()
         info = {}
         
-        question,context_id = self.user.init_dialoag(context_id,subs_num=15)
+        context_info,context_id = self.user.init_dialoag(context_id,subs_num=15)
         
-        option_words,mask_text = self.get_option_words_by_llm(question,use_cache=True,options_num=5)
+        option_words,mask_text = self.get_option_words_by_llm(context_info, use_cache=True,options_num=5)
         
+        
+        self.agent.asked_words.clear()
         self.agent.push_option_words(option_words)
-        question['option_words'] = option_words
-        question['mask_text'] = mask_text
+        context_info['option_words'] = option_words
+        context_info['mask_text'] = mask_text
         # print(mask_text)
         # print(option_words)
         
-        
+        self.context_info = context_info
         self.context_id = context_id
-        self.substitutes = question['substitutes']
-        self.lemma_subs = question['lemma_subs']
-        self.target = question['target']
-        self.lemma_target = question['lemma_target']
-        self.history.append(question)
-        embedding_text = question['text']
+        self.substitutes = context_info['substitutes']
+        self.lemma_subs = context_info['lemma_subs']
+        self.target = context_info['target']
+        self.lemma_target = context_info['lemma_target']
+        self.history.append(context_info)
+        embedding_text = context_info['text']
         topn_words = self.agent.option_words.topn(3)
         
         embedding_text = f"{embedding_text}</s>{''.join(topn_words)}"
