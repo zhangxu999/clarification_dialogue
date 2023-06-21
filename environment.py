@@ -12,6 +12,7 @@ import numpy as np
 from rl_utils import PriorityQueue
 
 import constant 
+from functools import lru_cache
 
 nlp = spacy.load("en_core_web_sm")
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
@@ -291,7 +292,8 @@ class DialougeEnv:
             
     def set_debug(self,debug):
         self.debug=debug
-                    
+        
+    # @lru_cache(10000)                
     def generate_mask_text(self, text, offset, target, substitutes, more_context=False):
         def split_doc(text, offset):
             pre_list = []
@@ -353,6 +355,13 @@ class DialougeEnv:
                 break
         return mask_text
 
+    
+    @lru_cache(10000)
+    def get_mask_words(mask_text, top_k):
+        origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
+        return origin_words
+    
+    
     def get_option_words_by_llm(self,question,use_cache=True, options_num=10,more_context=False):
         '''
         Please do not arbitrarily alter this function.
@@ -365,8 +374,7 @@ class DialougeEnv:
         text, offset, target, substitutes = question['text'], question['offset'], question['target'], question['substitutes'][:5]
         mask_text = self.generate_mask_text(text, offset, target, substitutes,more_context)
         
-        
-        origin_words = [(token['token_str'],round(token['score'],3)) for token in self.mask_model(mask_text,top_k=20)]
+        origin_words = self.get_mask_words(mask_text, top_k=20)
         words = [(w,s) for w,s in origin_words if w not in constant.filter_words]
         lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:options_num]]
         # print(origin_words,'-----------------\n',words,'-----------------\n',lemmatized_words)
