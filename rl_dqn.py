@@ -222,7 +222,7 @@ class RLModel:
         episodes_list = []
         if size is None:
             size = len(eva_env.dataset.contexts)
-        for context_id in eva_env.dataset.context_ids[:size]:
+        for context_id in tqdm.tqdm(eva_env.dataset.context_ids[:size],desc=eva_tag,mininterval=30):
             state, info = eva_env.reset(context_id)
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             for t in count():
