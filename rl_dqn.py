@@ -198,7 +198,7 @@ class RLModel:
                 policy_net_state_dict = self.policy_net.state_dict()
                 for key in policy_net_state_dict:
                     target_net_state_dict[key] = policy_net_state_dict[key]*self.TAU + target_net_state_dict[key]*(1-self.TAU)
-                #self.target_net.load_state_dict(target_net_state_dict)
+                self.target_net.load_state_dict(target_net_state_dict)
                 if done:
                     return_list.append(returns)
                     episodes_list.append(copy.copy(self.env.history))
