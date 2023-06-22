@@ -84,9 +84,13 @@ class RLModel:
         self.env = env
         self.test_env = test_env
         self.device = device
+        
+        self.log_path = log_path
         self.writer = SummaryWriter(log_path)
         
         self.steps_done = 0
+        self.metrics = {'reward':-np.inf}
+        
         
     def caculate_threshold(self):
         EPS_START = 0.9
@@ -206,10 +210,16 @@ class RLModel:
             
             self.writer.add_scalar('train/returns_episode', returns, i_episode)
             if evaluate and i_episode%500==0:
-                test_episodes_list, test_Rewards, test_accurate_match_rate = self.evaluate(self.test_env,eva_tag='eva test:')
+                test_metrics = self.evaluate(self.test_env,eva_tag='eva test:')
+                test_episodes_list, test_Rewards, test_accurate_match_rate = \
+                test_metrics['episodes_list'], test_metrics['rewards'], test_metrics['accurate_match_rate']
                 self.writer.add_scalar('test/Rewards_all', test_Rewards, self.steps_done)
                 self.writer.add_scalar('test/accurate_match_rate', test_accurate_match_rate, i_episode)
-                train_episodes_list, train_Rewards, train_accurate_match_rate = self.evaluate(self.env,eva_tag='eva train:')
+                self.save_result(i_episode, test_Rewards)
+                
+                train_metrics = self.evaluate(self.env,eva_tag='eva train:')
+                train_episodes_list, train_Rewards, train_accurate_match_rate = \
+                train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
                 self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
                 self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
                 print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}")
@@ -217,9 +227,25 @@ class RLModel:
 
         return test_episodes_list, train_episodes_list
     
+    def save_policy_model(self):
+        with open(f'{self.log_path}/best_policy.pkl','wb') as f:
+            policy_net_state_dict = self.policy_net.state_dict()
+            torch.save(policy_net_state_dict,f)
+
+            
+    
+    def save_result(self,i_episode, reward):
+        if reward > self.metrics['reward']:
+            self.save_policy_model()
+            self.metrics['reward'] = reward
+            with open(f'{self.log_path}/best_policy_info.txt','a',encoding='utf8') as f:
+                f.write(f"{i_episode},{reward}\n")
+    
     def evaluate(self,eva_env,size=None,eva_tag=''):
         Rewards = 0
         episodes_list = []
+        find_subs = []
+        history_lengths = []
         if size is None:
             size = len(eva_env.dataset.contexts)
         for context_id in tqdm.tqdm(eva_env.dataset.context_ids[:size],desc=eva_tag,mininterval=30):
@@ -229,10 +255,7 @@ class RLModel:
                 action, _ = self.select_action(state,eps_threshold=0)
                 observation, reward, terminated, truncated, _ = eva_env.step(action.item())
                 done = terminated or truncated
-                if terminated:
-                    next_state = None
-                else:
-                    next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+                next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
                 # Move to the next state
                 state = next_state
                 Rewards += reward
@@ -240,6 +263,9 @@ class RLModel:
                     episodes_list.append(copy.copy(eva_env.history))
                     # plot_durations()
                     break
+            is_find = eva_env.history[-1].get('find_subs')
+            find_subs.append(bool(is_find))
+            history_lengths.append(len(eva_env.history))
         
         accurate_match = []
         
@@ -248,4 +274,13 @@ class RLModel:
                 if 'is_right_action' in utter:
                     accurate_match.append(utter['is_right_action'])
         accurate_match_rate = np.array(accurate_match).sum() / len(accurate_match)
-        return episodes_list, Rewards, accurate_match_rate
+        find_subs_rate = np.array(find_subs).sum() / len(accurate_match)
+        average_length = np.mean(history_lengths)
+        
+        metrics = dict(episodes_list=episodes_list,
+                       rewards=Rewards,
+                       accurate_match_rate=accurate_match_rate,
+                      find_subs_rate=find_subs_rate,
+                       average_length=average_length
+                      )
+        return metrics
