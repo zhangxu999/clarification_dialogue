@@ -224,8 +224,8 @@ class RLModel:
                 train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
                 self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
                 self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
-                print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}")
-                print(f"train reward:{train_Rewards}", f"accurate_rate: {round(train_accurate_match_rate,3)}")
+                print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}", test_metrics['average_length'],test_metrics['find_subs_rate'])
+                print(f"train reward:{train_Rewards}", f"accurate_rate: {round(train_accurate_match_rate,3)}",train_metrics['average_length'],train_metrics['find_subs_rate'])
 
         return test_episodes_list, train_episodes_list
     
