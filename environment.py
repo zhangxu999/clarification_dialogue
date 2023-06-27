@@ -93,10 +93,12 @@ class User:
         
         self.reward_func = reward_func
         self.find_subs = False
+        
+        self.explained = False
     
     def init_dialoag(self,context_id=None,subs_num=10):
         self.find_subs = False
-        
+        self.explained = False
         if context_id is None:
             context_id = random.choice(self.context_ids)
         context = self.contexts[context_id]['context']
@@ -169,6 +171,8 @@ class User:
                             [False, True],
                             [False, False]]
         if len(option_words)==0:
+            terminated = True
+        elif (action == Action.EXPLAIN.value and self.explained):
             terminated = True
         else:
             terminated = terminated_table[action][int(is_right)]

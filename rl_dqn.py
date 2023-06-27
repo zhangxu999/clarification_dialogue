@@ -178,6 +178,24 @@ class RLModel:
             state, info = self.env.reset()
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             
+            self.writer.add_scalar('train/returns_episode', returns, i_episode)
+            if evaluate and i_episode%500==0:
+                test_metrics = self.evaluate(self.test_env,eva_tag='eva test:')
+                test_episodes_list, test_Rewards, test_accurate_match_rate = \
+                test_metrics['episodes_list'], test_metrics['rewards'], test_metrics['accurate_match_rate']
+                self.writer.add_scalar('test/Rewards_all', test_Rewards, self.steps_done)
+                self.writer.add_scalar('test/accurate_match_rate', test_accurate_match_rate, i_episode)
+                self.save_result(i_episode, test_Rewards)
+                
+                train_metrics = self.evaluate(self.env,eva_tag='eva train:')
+                train_episodes_list, train_Rewards, train_accurate_match_rate = \
+                train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
+                self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
+                self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
+                print(i_episode)
+                for key in ['rewards','accurate_match_rate','find_mean_length','find_subs_rate']:
+                    print( key,test_metrics[key],train_metrics[key])
+
             for t in count():
                 action, eps_threshold = self.select_action(state)
                 self.writer.add_scalar('eps_threshold', eps_threshold, self.steps_done)
@@ -210,23 +228,6 @@ class RLModel:
                     episodes_list.append(copy.copy(self.env.history))
                     break
             
-            self.writer.add_scalar('train/returns_episode', returns, i_episode)
-            if evaluate and i_episode%500==0:
-                test_metrics = self.evaluate(self.test_env,eva_tag='eva test:')
-                test_episodes_list, test_Rewards, test_accurate_match_rate = \
-                test_metrics['episodes_list'], test_metrics['rewards'], test_metrics['accurate_match_rate']
-                self.writer.add_scalar('test/Rewards_all', test_Rewards, self.steps_done)
-                self.writer.add_scalar('test/accurate_match_rate', test_accurate_match_rate, i_episode)
-                self.save_result(i_episode, test_Rewards)
-                
-                train_metrics = self.evaluate(self.env,eva_tag='eva train:')
-                train_episodes_list, train_Rewards, train_accurate_match_rate = \
-                train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
-                self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
-                self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
-                print(i_episode)
-                for key in ['rewards','accurate_match_rate','find_mean_length','find_subs_rate']:
-                    print( key,test_metrics[key],train_metrics[key])
 #                 print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}", test_metrics['find_mean_length'],test_metrics['find_subs_rate'])
                 
 #                 print(f"train reward:{train_Rewards}", f"accurate_rate: {round(train_accurate_match_rate,3)}",train_metrics['average_length'],train_metrics['find_subs_rate'])
