@@ -1,6 +1,7 @@
 from collections import defaultdict,namedtuple
 import gzip
 import json
+
 import random
 from itertools import combinations
 from transformers import AutoTokenizer, AutoModelForMaskedLM
@@ -82,7 +83,7 @@ from constant import Action
 
 class User:
     
-    def __init__(self,data_agent):
+    def __init__(self,data_agent,reward_func='is_right_action'):
         self.data_agent = data_agent
         self.contexts = data_agent.contexts
         self.context_ids = list(self.contexts.keys())
@@ -90,6 +91,7 @@ class User:
         self.lemma_subs = []
         self.best_word = (None,0)
         
+        self.reward_func = reward_func
         self.find_subs = False
     
     def init_dialoag(self,context_id=None,subs_num=10):
@@ -120,30 +122,40 @@ class User:
     
     
         
-    def is_right_action(self, action, option_words):
-        
+    def is_right_action_score(self, action, option_words):
         '''
         terminated 条件：
         1. 找到了target，或high substitutes,
         2. options words 用完了
         3. 长度超过限度 
         '''
-
+        len_option = len(option_words)
+        if len_option == 1:
+            gap = 0
+        if len_option == 2:
+            gap = option_words[0][1] - option_words[1][1]
+        elif len_option == 3:
+            gap1 = option_words[0][1] - option_words[1][1]
+            gap2 = option_words[0][1] - option_words[2][1]
+            gap = max(gap1, gap2)
+            
+        
+        scores = [s for w,s in option_words]
         
         if len(option_words)==0:
             is_right = False
-            
-        elif action ==Action.NO_ACTION.value:
-            is_right = option_words[0] == self.lemma_target
-            if is_right:
-                self.find_subs = True
-        elif action in (Action.CONFIRM.value, Action.OPTION.value):
-            is_right = any([w in self.highscore_subs for w in option_words])
-            if is_right:
-                self.find_subs = True
-        else:
-            is_right = all([w not in self.highscore_subs for w in option_words])
         
+        elif action == Action.NO_ACTION.value:
+            is_right = (option_words[0][1] >=0.6) or (gap >= 0.3)
+        elif action ==Action.CONFIRM.value:
+            is_right = (gap >= 0.2)
+        elif action == Action.OPTION.value:
+            is_right =   (gap >=0.1) and max(scores)> 0
+        else:
+            is_right = max(scores) == 0
+            # is_right = all([w not in self.highscore_subs for w in option_words])
+        
+        self.find_subs = any([w in self.highscore_subs for w in option_words])
         
         reward_list = [3, 2, 1, 0]
         reward = reward_list[action]
@@ -170,14 +182,70 @@ class User:
         if action == Action.OPTION.value:
             words = [w for w in option_words if w in self.highscore_subs]
             answer = f'{",".join(words)}' if is_right else 'none of these'
+
+        
+        return is_right, reward, terminated, answer, self.find_subs
+
+    def is_right_action(self, action, option_words):
+        
+        '''
+        terminated 条件：
+        1. 找到了target，或high substitutes,
+        2. options words 用完了
+        3. 长度超过限度 
+        '''
+        words = [w for w,s in option_words]
+        scores = [s for w,s in option_words]
+
+        
+        if len(option_words)==0:
+            is_right = False
+            
+        elif action ==Action.NO_ACTION.value:
+            is_right = words[0] == self.lemma_target
+            if is_right:
+                self.find_subs = True
+        elif action in (Action.CONFIRM.value, Action.OPTION.value):
+            is_right = any([w in self.highscore_subs for w in words])
+            if is_right:
+                self.find_subs = True
+        else:
+            is_right = all([w not in self.highscore_subs for w in words])
+        
+        
+        reward_list = [3, 2, 1, 0]
+        reward = reward_list[action]
+
+        if not is_right:
+            reward *=-1
+            
+        
+        terminated_table = [[True, True],
+                            [False, True],
+                            [False, True],
+                            [False, False]]
+        if len(words)==0:
+            terminated = True
+        else:
+            terminated = terminated_table[action][int(is_right)]
+        
+        answer_table = [[" you misunderstdood my words, I mean...",''],
+          ['No, it is not','Yes, it is'],
+          ["none of these",f"the first"],
+          ["it is obviously, but I will try explain it too","sure"]]
+        answer = answer_table[action][int(is_right)]
+        
+        if action == Action.OPTION.value:
+            words = [w for w in words if w in self.highscore_subs]
+            answer = f'{",".join(words)}' if is_right else 'none of these'
             
         
         return is_right, reward, terminated, answer, self.find_subs
 
     def utterance(self,action, option_words):
         # should_function = [self.should_no_action, self.should_confirm, self.should_opt, self.should_explain]
-        
-        is_right_action,reward,terminated, answer,find_subs = self.is_right_action(action,option_words)
+        reward_func = getattr(self, self.reward_func)
+        is_right_action,reward,terminated, answer,find_subs = reward_func(action,option_words)
         
         
         answer_reward = dict(reward=reward,terminated=terminated,text=answer, is_right_action=is_right_action,find_subs=find_subs)
@@ -205,18 +273,19 @@ class Agent:
     def utterance(self,action,target):
         # print(action, [c[0] for a,b,c in self.option_words._queue])
         words = []
+        word_scores = []
         if action == Action.NO_ACTION.value:
             text = f"I'm pretty sure of the meaning of the word {target} . "
             if not self.option_words.is_empty():
                 word,score = self.option_words.pop()
                 words.append(word)
-                self.asked_words.append(word)
+                word_scores.append((word,score))
         elif action == Action.CONFIRM.value:
 
             if not self.option_words.is_empty():
                 word,score = self.option_words.pop()
-                self.asked_words.append(word)
                 words.append(word)
+                word_scores.append((word,score))
             if len(words)>0:
                 text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
             else:
@@ -225,8 +294,8 @@ class Agent:
             for i in range(3):
                 if not self.option_words.is_empty():
                     word,score = self.option_words.pop()
-                    self.asked_words.append(word)
                     words.append(word)
+                    word_scores.append((word,score))
             if len(words)>0:
                 text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
             else:
@@ -237,9 +306,12 @@ class Agent:
             if not self.option_words.is_empty():
                 word,score = self.option_words.pop()
                 words.append(word)
-                self.asked_words.append(word)
+                word_scores.append((word,score))
+                
+        self.asked_words += words
+                
 
-        bot_response = dict(action=action,text=text,option_words=words)
+        bot_response = dict(action=action,text=text,option_words=word_scores)
         return bot_response
         
 
@@ -248,7 +320,9 @@ class Agent:
 
 class DialougeEnv:
     
-    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9,debug=False):
+    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9,debug=False,append_words=True,append_score=False,addscore_emb=False,reward_func='is_right_action'):
+        
+        
         
         self.device = device
         
@@ -256,9 +330,12 @@ class DialougeEnv:
         self.max_length = max_length
         
         self.debug = debug
+        self.append_words = append_words
+        self.append_score = append_score
+        self.addscore_emb = addscore_emb
         
         self.dataset = dataset
-        self.user = User(dataset)
+        self.user = User(dataset,reward_func)
         self.agent = Agent()
         
         class ActionSpace:
@@ -390,8 +467,6 @@ class DialougeEnv:
         agent_response = self.agent.utterance(action,target)
         agent_response['role'] = 'bot'
         self.history.append(agent_response)
-
-
         action = agent_response['action']
         option_words = agent_response['option_words']
         user_response = self.user.utterance(action, option_words)
@@ -423,12 +498,28 @@ class DialougeEnv:
             print(agent_response)
             print(user_response)
 
-
+        
         history_text = '</s>'.join([q['text'] for q in self.history])
-        topn_words = self.agent.option_words.topn(3)
-        history_text = f"{history_text}</s>{''.join(topn_words)}"
+        
+        topn_words_score = self.agent.option_words.topn(3,with_score=True)
+        if self.append_words:
+            topn_words = [w for w,s in topn_words_score]
+            history_text = f"{history_text}</s>{','.join(topn_words)}"
+        if self.append_score:
+            w_s_text = [f"{w},{int(s)}" for w,s in topn_words_score]
+            history_text = f"{history_text}</s>{';'.join(w_s_text)}"
+            
 
         embedding = self.model.encode(history_text)
+            
+        
+        if self.addscore_emb:
+            scores = np.array([0,0,0])
+            w_scores = [s for w,s in topn_words_score]
+            for i,s in enumerate(w_scores):
+                scores[i] = s
+            embedding = np.concatenate([embedding, scores])
+            
         # self.history[-1]['history_text'] = history_text
         return embedding, reward, terminated, truncated, {}
             
@@ -457,12 +548,27 @@ class DialougeEnv:
         self.target = context_info['target']
         self.lemma_target = context_info['lemma_target']
         self.history.append(context_info)
-        embedding_text = context_info['text']
-        topn_words = self.agent.option_words.topn(3)
+        history_text = context_info['text']
         
-        embedding_text = f"{embedding_text}</s>{''.join(topn_words)}"
-        embedding = self.model.encode(embedding_text)
         
+        topn_words_score = self.agent.option_words.topn(3,with_score=True)
+        if self.append_words:
+            topn_words = [w for w,s in topn_words_score]
+            history_text = f"{history_text}</s>{','.join(topn_words)}"
+        if self.append_score:
+            w_s_text = [f"{w},{int(s)}" for w,s in topn_words_score]
+            history_text = f"{history_text}</s>{';'.join(w_s_text)}"
+            
+        embedding = self.model.encode(history_text)
+        
+        
+        if self.addscore_emb:
+            scores = np.array([0,0,0])
+            w_scores = [s for w,s in topn_words_score]
+            for i,s in enumerate(w_scores):
+                scores[i] = s
+            embedding = np.concatenate([embedding, scores])
+
         # if context_id in self.state_mapping:
         #     embedding = self.state_mapping[context_id]
         # else:

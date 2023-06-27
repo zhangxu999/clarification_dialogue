@@ -64,7 +64,7 @@ class DQN(nn.Module):
 
 class RLModel:
     
-    def __init__(self,env,test_env,device,log_path='rl_log'):
+    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log'):
         self.BATCH_SIZE = 128
         self.TAU = 0.005
         self.LR = 1e-4
@@ -74,6 +74,8 @@ class RLModel:
         # Get the number of state observations
         state, info = env.reset()
         n_observations = len(state)
+        if addscore_emb:
+            n_observations += 3
 
         self.policy_net = DQN(n_observations, n_actions).to(device)
         self.policy_net.initialize_weights()

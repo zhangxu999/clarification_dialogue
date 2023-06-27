@@ -17,9 +17,12 @@ class PriorityQueue:
     def pop(self):
         return heapq.heappop(self._queue)[-1]
     
-    def topn(self,n):
+    def topn(self,n,with_score=False):
         top_words = heapq.nsmallest(n,self._queue)
-        return [w for (p,idx,(w,s)) in top_words]
+        if with_score:
+            return [(w,s) for (p,idx,(w,s)) in top_words]
+        else:
+            return [w for (p,idx,(w,s)) in top_words]
 
 
 def plot_durations(show_result=False):
