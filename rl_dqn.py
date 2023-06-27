@@ -164,7 +164,7 @@ class RLModel:
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
 
-    def train(self, num_episodes=3000,start_episodes=0,evaluate=True,debug=False):
+    def train(self, num_episodes=3000,start_episodes=0,evaluate=True,debug=False,eval_step=500):
         self.env.set_debug(debug)
         self.test_env.set_debug(debug)
 
@@ -179,7 +179,7 @@ class RLModel:
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             
             self.writer.add_scalar('train/returns_episode', returns, i_episode)
-            if evaluate and i_episode%500==0:
+            if evaluate and i_episode%eval_step==0:
                 test_metrics = self.evaluate(self.test_env,eva_tag='eva test:')
                 test_episodes_list, test_Rewards, test_accurate_match_rate = \
                 test_metrics['episodes_list'], test_metrics['rewards'], test_metrics['accurate_match_rate']
