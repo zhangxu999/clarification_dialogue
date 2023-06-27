@@ -157,7 +157,7 @@ class User:
             is_right = max(scores) == 0
             # is_right = all([w not in self.highscore_subs for w in option_words])
         
-        self.find_subs = any([w in self.highscore_subs for w in option_words])
+        self.find_subs = any([w in self.highscore_subs for w,s in option_words])
         
         reward_list = [3, 2, 1, 0]
         reward = reward_list[action]
