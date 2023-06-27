@@ -455,7 +455,7 @@ class DialougeEnv:
         text, offset, target, substitutes = question['text'], question['offset'], question['target'], question['substitutes'][:5]
         mask_text = self.generate_mask_text(text, offset, target, substitutes,more_context)
         
-        origin_words = self.get_mask_words(mask_text, top_k=20)
+        origin_words = self.mask_model.get(mask_text, top_k=20)
         words = [(w,s) for w,s in origin_words if w not in constant.filter_words]
         lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:options_num]]
         # print(origin_words,'-----------------\n',words,'-----------------\n',lemmatized_words)

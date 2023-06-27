@@ -23,8 +23,10 @@ class PriorityQueue:
             return [(w,s) for (p,idx,(w,s)) in top_words]
         else:
             return [w for (p,idx,(w,s)) in top_words]
-
-
+        
+        
+        
+        
 def plot_durations(show_result=False):
     plt.figure(1)
     durations_t = torch.tensor(episode_durations, dtype=torch.float)
