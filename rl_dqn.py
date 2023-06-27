@@ -224,8 +224,12 @@ class RLModel:
                 train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
                 self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
                 self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
-                print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}", test_metrics['average_length'],test_metrics['find_subs_rate'])
-                print(f"train reward:{train_Rewards}", f"accurate_rate: {round(train_accurate_match_rate,3)}",train_metrics['average_length'],train_metrics['find_subs_rate'])
+                print(i_episode)
+                for key in ['rewards','accurate_match_rate','find_mean_length','find_subs_rate']:
+                    print( key,test_metrics[key],train_metrics[key])
+#                 print(f"\n {i_episode} test reward：{test_Rewards}", f"accurate_rate: {round(test_accurate_match_rate,3)}", test_metrics['find_mean_length'],test_metrics['find_subs_rate'])
+                
+#                 print(f"train reward:{train_Rewards}", f"accurate_rate: {round(train_accurate_match_rate,3)}",train_metrics['average_length'],train_metrics['find_subs_rate'])
 
         return test_episodes_list, train_episodes_list
     
@@ -277,12 +281,23 @@ class RLModel:
                     accurate_match.append(utter['is_right_action'])
         accurate_match_rate = np.array(accurate_match).sum() / len(accurate_match)
         find_subs_rate = np.array(find_subs).sum() / len(accurate_match)
-        average_length = np.mean(history_lengths)
+        
+        find_mean_lengths =[]
+        not_find_mean_lengths = []
+        for is_find, average_length in zip(find_subs,history_lengths):
+            if is_find==1:
+                find_mean_lengths.append(average_length)
+            else:
+                not_find_mean_lengths.append(average_length)
+                
+        find_mean_length = np.mean(find_mean_lengths)
+        not_find_mean_length = np.mean(not_find_mean_lengths)
         
         metrics = dict(episodes_list=episodes_list,
                        rewards=Rewards,
                        accurate_match_rate=accurate_match_rate,
                       find_subs_rate=find_subs_rate,
-                       average_length=average_length
+                       find_mean_length=find_mean_length,
+                       not_find_mean_length=not_find_mean_length
                       )
         return metrics
