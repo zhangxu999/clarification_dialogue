@@ -104,10 +104,11 @@ class RLModel:
         return eps_threshold
         
         
-    def select_action(self, state,eps_threshold=None):
+    def select_action(self, state, eps_threshold=None):
         # global steps_done
         sample = random.random()
-        eps_threshold = self.caculate_threshold() if  eps_threshold is None else 0
+        if  eps_threshold is None:
+            eps_threshold = self.caculate_threshold()
         if sample >= eps_threshold:
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
@@ -248,7 +249,7 @@ class RLModel:
             with open(f'{self.log_path}/best_policy_info.txt','a',encoding='utf8') as f:
                 f.write(f"{i_episode},{reward}\n")
     
-    def evaluate(self,eva_env,size=None,eva_tag=''):
+    def evaluate(self,eva_env,size=None,eva_tag='',eps_threshold=0,set_action=None):
         Rewards = 0
         episodes_list = []
         find_subs = []
@@ -259,8 +260,11 @@ class RLModel:
             state, info = eva_env.reset(context_id)
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             for t in count():
-                action, _ = self.select_action(state,eps_threshold=0)
-                observation, reward, terminated, truncated, _ = eva_env.step(action.item())
+                action, _ = self.select_action(state,eps_threshold=eps_threshold)
+                action = action.item()
+                if set_action is not None:
+                    action = set_action
+                observation, reward, terminated, truncated, _ = eva_env.step(action)
                 done = terminated or truncated
                 next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
                 # Move to the next state
