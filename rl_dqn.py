@@ -64,7 +64,7 @@ class DQN(nn.Module):
 
 class RLModel:
     
-    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log'):
+    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log',memory_size=10000):
         self.BATCH_SIZE = 128
         self.TAU = 0.005
         self.LR = 1e-4
@@ -82,7 +82,7 @@ class RLModel:
         self.target_net = DQN(n_observations, n_actions).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LR, amsgrad=True)
-        self.memory = ReplayMemory(10000)
+        self.memory = ReplayMemory(memory_size)
         self.env = env
         self.test_env = test_env
         self.device = device
