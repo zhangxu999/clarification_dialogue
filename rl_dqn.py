@@ -181,7 +181,10 @@ class RLModel:
             
             self.writer.add_scalar('train/returns_episode', returns, i_episode)
             if evaluate and i_episode%eval_step==0:
-                test_metrics = self.evaluate(self.test_env,eva_tag='eva test:')
+                eps_threshold = 1 if i_episode == 0 else 0
+           
+                    
+                test_metrics = self.evaluate(self.test_env, eps_threshold=eps_threshold, eva_tag='eva test:')
                 test_episodes_list, test_Rewards, test_accurate_match_rate = \
                 test_metrics['episodes_list'], test_metrics['rewards'], test_metrics['accurate_match_rate']
                 self.writer.add_scalar('test/Rewards_all', test_Rewards, self.steps_done)
