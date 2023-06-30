@@ -263,7 +263,7 @@ class RLModel:
                 if not saved:
                     self.save_policy_model(i_episode,key,new_value)
                     saved = True
-                self.metrics[key] = reward
+                self.metrics[key] = new_value
                 with open(f'{self.log_path}/best_policy_info.txt','a',encoding='utf8') as f:
                     f.write(f"{i_episode},{key},{new_value}\n")
 
