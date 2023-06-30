@@ -91,7 +91,12 @@ class RLModel:
         self.writer = SummaryWriter(log_path)
         
         self.steps_done = 0
-        self.metrics = {'reward':-np.inf}
+        self.metrics = dict(
+                      rewards=-np.inf,
+                       accurate_match_rate=-np.inf,
+                      find_subs_rate=-np.inf,
+                       find_mean_length=np.inf,
+                      )
         
         
     def caculate_threshold(self):
@@ -192,7 +197,7 @@ class RLModel:
                 for key in test_metrics:
                     if key != 'episodes_list':
                         self.writer.add_scalar(f'test/{key}', test_metrics['key'], i_episode)
-                self.save_result(i_episode, test_Rewards)
+                self.save_result(i_episode, test_metrics)
                 
                 train_metrics = self.evaluate(self.env,eva_tag='eva train:')
                 train_episodes_list, train_Rewards, train_accurate_match_rate = \
@@ -200,7 +205,6 @@ class RLModel:
                 for key in train_metrics:
                     if key != 'episodes_list':
                         self.writer.add_scalar(f'train/{key}', train_metrics['key'], i_episode)
-                        # self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
                 print(i_episode)
                 for key in ['rewards','accurate_match_rate','find_mean_length','find_subs_rate']:
                     print( key,test_metrics[key],train_metrics[key])
@@ -243,14 +247,28 @@ class RLModel:
 
         return test_episodes_list, train_episodes_list
     
-    def save_policy_model(self):
-        with open(f'{self.log_path}/best_policy.pkl','wb') as f:
+    def save_policy_model(self,i_episode,key,new_value):
+        with open(f'{self.log_path}/{f"{i_episode}_{key}_{str(new_value)}.pkl','wb') as f:
             policy_net_state_dict = self.policy_net.state_dict()
             torch.save(policy_net_state_dict,f)
 
             
     
-    def save_result(self,i_episode, reward):
+    def save_result(self,i_episode, metrics):
+        saved = False
+        for key in self.metrics:
+            new_value = metrics[key]
+            if (key=='find_mean_length' and  metrics[key]< self.metrics[key]) or \
+            (key != 'find_mean_length' and metrics[key] > self.metrics[key]):
+                if not saved:
+                    self.save_policy_model(i_episode,key,new_value)
+                    saved = True
+                self.metrics[key] = reward
+                with open(f'{self.log_path}/best_policy_info.txt','a',encoding='utf8') as f:
+                    f.write(f"{i_episode},{key},{new_value}\n")
+
+                
+            
         if reward > self.metrics['reward']:
             self.save_policy_model()
             self.metrics['reward'] = reward
