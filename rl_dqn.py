@@ -196,7 +196,7 @@ class RLModel:
                 
                 for key in test_metrics:
                     if key != 'episodes_list':
-                        self.writer.add_scalar(f'test/{key}', test_metrics['key'], i_episode)
+                        self.writer.add_scalar(f'test/{key}', test_metrics[key], i_episode)
                 self.save_result(i_episode, test_metrics)
                 
                 train_metrics = self.evaluate(self.env,eva_tag='eva train:')
@@ -204,7 +204,7 @@ class RLModel:
                 train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
                 for key in train_metrics:
                     if key != 'episodes_list':
-                        self.writer.add_scalar(f'train/{key}', train_metrics['key'], i_episode)
+                        self.writer.add_scalar(f'train/{key}', train_metrics[key], i_episode)
                 print(i_episode)
                 for key in ['rewards','accurate_match_rate','find_mean_length','find_subs_rate']:
                     print( key,test_metrics[key],train_metrics[key])
