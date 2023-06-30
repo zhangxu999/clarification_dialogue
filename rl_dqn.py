@@ -269,12 +269,6 @@ class RLModel:
 
                 
             
-        if reward > self.metrics['reward']:
-            self.save_policy_model()
-            self.metrics['reward'] = reward
-            with open(f'{self.log_path}/best_policy_info.txt','a',encoding='utf8') as f:
-                f.write(f"{i_episode},{reward}\n")
-    
     def evaluate(self,eva_env,size=None,eva_tag='',eps_threshold=0,set_action=None):
         Rewards = 0
         episodes_list = []
