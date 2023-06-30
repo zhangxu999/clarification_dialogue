@@ -248,7 +248,7 @@ class RLModel:
         return test_episodes_list, train_episodes_list
     
     def save_policy_model(self,i_episode,key,new_value):
-        with open(f'{self.log_path}/{f"{i_episode}_{key}_{str(new_value)}.pkl','wb') as f:
+        with open(f'{self.log_path}/{i_episode}_{key}_{str(new_value)}.pkl','wb') as f:
             policy_net_state_dict = self.policy_net.state_dict()
             torch.save(policy_net_state_dict,f)
 
