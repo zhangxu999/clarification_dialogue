@@ -119,7 +119,7 @@ class RLModel:
             return torch.tensor([[self.env.action_space.sample()]], device= self.device, dtype=torch.long), eps_threshold
 
 
-    def optimize_model(self):
+    def optimize_model(self,i_episode):
         if len(self.memory) < self.BATCH_SIZE:
             return
         transitions = self.memory.sample(self.BATCH_SIZE)
@@ -164,6 +164,7 @@ class RLModel:
         # In-place gradient clipping
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
+        self.writer.add_scalar(f'train/loss', loss.detach().tolist(), i_episode)
 
     def train(self, num_episodes=3000,start_episodes=0,evaluate=True,debug=False,eval_step=500):
         self.env.set_debug(debug)
@@ -187,15 +188,19 @@ class RLModel:
                 test_metrics = self.evaluate(self.test_env, eps_threshold=eps_threshold, eva_tag='eva test:')
                 test_episodes_list, test_Rewards, test_accurate_match_rate = \
                 test_metrics['episodes_list'], test_metrics['rewards'], test_metrics['accurate_match_rate']
-                self.writer.add_scalar('test/Rewards_all', test_Rewards, self.steps_done)
-                self.writer.add_scalar('test/accurate_match_rate', test_accurate_match_rate, i_episode)
+                
+                for key in test_metrics:
+                    if key != 'episodes_list':
+                        self.writer.add_scalar(f'test/{key}', test_metrics['key'], i_episode)
                 self.save_result(i_episode, test_Rewards)
                 
                 train_metrics = self.evaluate(self.env,eva_tag='eva train:')
                 train_episodes_list, train_Rewards, train_accurate_match_rate = \
                 train_metrics['episodes_list'], train_metrics['rewards'], train_metrics['accurate_match_rate']
-                self.writer.add_scalar('train/Rewards_all', train_Rewards, self.steps_done)
-                self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
+                for key in train_metrics:
+                    if key != 'episodes_list':
+                        self.writer.add_scalar(f'train/{key}', train_metrics['key'], i_episode)
+                        # self.writer.add_scalar('train/accurate_match_rate', train_accurate_match_rate, i_episode)
                 print(i_episode)
                 for key in ['rewards','accurate_match_rate','find_mean_length','find_subs_rate']:
                     print( key,test_metrics[key],train_metrics[key])
@@ -219,7 +224,7 @@ class RLModel:
                 # Move to the next state
                 state = next_state
                 # Perform one step of the optimization (on the policy network)
-                self.optimize_model()
+                self.optimize_model(i_episode)
                 # Soft update of the target network's weights
                 # θ′ ← τ θ + (1 −τ )θ′
                 target_net_state_dict = self.target_net.state_dict()
