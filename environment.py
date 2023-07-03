@@ -327,7 +327,7 @@ class DialougeEnv:
     def __init__(self,dataset, model, mask_model,device, 
                  length_penalty=0.5,max_length=9,debug=False,append_words=True,
                  append_score=False,addscore_emb=False,reward_func='is_right_action',
-                w1=1/3,w2=1/3,w3=1/3):
+                reward_params=dict(w1=1,w2=1,w3=1,length_type='minus')):
         
         
         
@@ -341,9 +341,7 @@ class DialougeEnv:
         self.append_score = append_score
         self.addscore_emb = addscore_emb
         
-        self.w1 = w1
-        self.w2 = w2
-        self.w3 = w3
+        self.reward_params = reward_params
         
         self.dataset = dataset
         self.user = User(dataset,reward_func)
@@ -494,17 +492,25 @@ class DialougeEnv:
         truncated =  len(self.history) > self.max_length 
         terminated = (user_response['terminated'] or truncated)
         
+        
         R_match = user_response['reward'] #- self.length_penalty  # Length penalty
         R_find = 3 if (terminated and self.user.is_find_subs()) else 0
-        R_length = 1/self.length_penalty if terminated else 0
+        w1 = self.reward_params['w1']
+        w2 = self.reward_params['w2']
+        w3 = self.reward_params['w3']
+        length_type = self.reward_params['length_type']
+        if length_type == 'plus':
+            R_length = 1/self.length_penalty if terminated else 0
+        else: # 'minus'
+            R_length = -0.5
         
-        R = self.w1 * R_match + self.w2 * R_find + self.w3 * R_length
+        R = w1 * R_match + w2 * R_find + w3 * R_length
         user_response['terminated'] = terminated
         user_response['reward'] = R
         
-        reward_detail = {'action_reward': self.w1 * R_match,
-                         'find_reward': R_find,
-                         'length_penalty':self.w3 * R_length
+        reward_detail = {'action_reward': w1 * R_match,
+                         'find_reward': w2 * R_find,
+                         'length_penalty': w3 * R_length
                         }
         user_response['reward_detail']  = reward_detail
         self.history.append(user_response)
