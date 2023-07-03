@@ -242,6 +242,9 @@ class User:
         if action == Action.OPTION.value:
             words = [w for w in words if w in self.highscore_subs]
             answer = f'{",".join(words)}' if is_right else 'none of these'
+        
+        
+            
             
         
         return is_right, reward, terminated, answer, self.find_subs
@@ -251,10 +254,15 @@ class User:
         reward_func = getattr(self, self.reward_func)
         is_right_action,reward,terminated, answer,find_subs = reward_func(action,option_words)
         
+        if (action == Action.EXPLAIN.value) and self.explained:
+            terminated = True
+            
         
         answer_reward = dict(reward=reward,terminated=terminated,text=answer, is_right_action=is_right_action,find_subs=find_subs)
         # answer_reward['reward'] = reward
         # answer_reward['is_right_action'] = is_right_action
+        if action == Action.EXPLAIN.value:
+            self.explained = True
         
         return answer_reward
     
@@ -291,7 +299,8 @@ class Agent:
                 words.append(word)
                 word_scores.append((word,score))
             if len(words)>0:
-                text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
+                # text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
+                text = f"I am not sure what the word {target} means, do you mean {','.join(words)}?"
             else:
                 text = f" there is no enough words to discuss."
         elif action == Action.OPTION.value:
@@ -301,7 +310,8 @@ class Agent:
                     words.append(word)
                     word_scores.append((word,score))
             if len(words)>0:
-                text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
+                # text = f"The word {target} is not clear to me. Do you mean something like {','.join(words)} by this?"
+                text = f"I'm not sure  what the word {target} means,  which of these words, {','.join(words)} is closer to what you have in mind?"
             else:
                 text = f" there is no enough words to discuss."
         elif action == Action.EXPLAIN.value:
