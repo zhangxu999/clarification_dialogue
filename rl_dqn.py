@@ -266,8 +266,12 @@ class RLModel:
                 self.metrics[key] = new_value
                 with open(f'{self.log_path}/best_policy_info.txt','a',encoding='utf8') as f:
                     f.write(f"{i_episode},{key},{new_value}\n")
+    
+    def save_test_result(self,data,file_name):
+        with open(f'{self.log_path}/{file_name}.pkl','wb') as f:
+            pickle.dump(data, f)
+        print(f"saved {self.log_path}/{file_name}.pkl")
 
-                
             
     def evaluate(self,eva_env,size=None,eva_tag='',eps_threshold=0,set_action=None):
         Rewards = 0
