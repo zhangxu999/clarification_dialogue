@@ -324,7 +324,10 @@ class Agent:
 
 class DialougeEnv:
     
-    def __init__(self,dataset, model, mask_model,device, length_penalty=0.5,max_length=9,debug=False,append_words=True,append_score=False,addscore_emb=False,reward_func='is_right_action'):
+    def __init__(self,dataset, model, mask_model,device, 
+                 length_penalty=0.5,max_length=9,debug=False,append_words=True,
+                 append_score=False,addscore_emb=False,reward_func='is_right_action',
+                w1=1/3,w2=1/3,w3=1/3):
         
         
         
@@ -337,6 +340,10 @@ class DialougeEnv:
         self.append_words = append_words
         self.append_score = append_score
         self.addscore_emb = addscore_emb
+        
+        self.w1 = w1
+        self.w2 = w2
+        self.w3 = w3
         
         self.dataset = dataset
         self.user = User(dataset,reward_func)
@@ -486,15 +493,19 @@ class DialougeEnv:
 
         truncated =  len(self.history) > self.max_length 
         terminated = (user_response['terminated'] or truncated)
-        reward_detail = {'action_reward':user_response['reward'],
-                         'length_penalty':self.length_penalty
-                        }
-        reward = user_response['reward'] - self.length_penalty  # Length penalty
-        if terminated and self.user.is_find_subs():
-            reward_detail['find_subs'] = 3
-            reward += 3
+        
+        R_match = user_response['reward'] #- self.length_penalty  # Length penalty
+        R_find = 3 if (terminated and self.user.is_find_subs()) else 0
+        R_length = 1/self.length_penalty if terminated else 0
+        
+        R = self.w1 * R_match + self.w2 * R_find + self.w3 * R_length
         user_response['terminated'] = terminated
-        user_response['reward'] = reward
+        user_response['reward'] = R
+        
+        reward_detail = {'action_reward': self.w1 * R_match,
+                         'find_reward': R_find,
+                         'length_penalty':self.w3 * R_length
+                        }
         user_response['reward_detail']  = reward_detail
         self.history.append(user_response)
         if self.debug:
@@ -524,8 +535,10 @@ class DialougeEnv:
                 scores[i] = s
             embedding = np.concatenate([embedding, scores])
             
+            
+    
         # self.history[-1]['history_text'] = history_text
-        return embedding, reward, terminated, truncated, {}
+        return embedding, R, terminated, truncated, {}
             
             
     
