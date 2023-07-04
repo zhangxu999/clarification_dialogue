@@ -62,10 +62,36 @@ class DQN(nn.Module):
         x = F.relu(self.layer2(x))
         return self.layer3(x)
     
+class DQN3(nn.Module):
+
+    def __init__(self, n_observations, n_actions):
+        super(DQN3, self).__init__()
+        self.layer1 = nn.Linear(n_observations, 128)
+        self.layer2 = nn.Linear(128, 128)
+        self.layer21 = nn.Linear(128, 128)
+        self.layer22 = nn.Linear(128, 128)
+        self.layer3 = nn.Linear(128, n_actions)
+        
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0.0, std=0.05)
+                nn.init.constant_(m.bias, 0.1)
+
+
+    # Called with either one element to determine next action, or a batch
+    # during optimization. Returns tensor([[left0exp,right0exp]...]).
+    def forward(self, x):
+        x = F.relu(self.layer1(x))        
+        x = F.relu(self.layer2(x))
+        x = F.relu(self.layer21(x))
+        x = F.relu(self.layer22(x))
+        return self.layer3(x)
+
 
 class RLModel:
     
-    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log',memory_size=10000,EPS_DECAY=10000):
+    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log',memory_size=10000,EPS_DECAY=10000,dqn_layer=1):
         self.BATCH_SIZE = 128
         self.TAU = 0.005
         self.LR = 1e-4
@@ -78,11 +104,17 @@ class RLModel:
         n_observations = len(state)
         if addscore_emb:
             n_observations += 3
+        if dqn_layer==1:
+            self.policy_net = DQN(n_observations, n_actions).to(device)
+            self.policy_net.initialize_weights()
+            self.target_net = DQN(n_observations, n_actions).to(device)
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+        else: # dqn_layer==3
+            self.policy_net = DQN3(n_observations, n_actions).to(device)
+            self.policy_net.initialize_weights()
+            self.target_net = DQN3(n_observations, n_actions).to(device)
+            self.target_net.load_state_dict(self.policy_net.state_dict())
 
-        self.policy_net = DQN(n_observations, n_actions).to(device)
-        self.policy_net.initialize_weights()
-        self.target_net = DQN(n_observations, n_actions).to(device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LR, amsgrad=True)
         self.memory = ReplayMemory(memory_size)
         self.env = env
