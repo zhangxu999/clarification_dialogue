@@ -65,11 +65,12 @@ class DQN(nn.Module):
 
 class RLModel:
     
-    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log',memory_size=10000):
+    def __init__(self,env,test_env,device,addscore_emb=False,log_path='rl_log',memory_size=10000,EPS_DECAY=10000):
         self.BATCH_SIZE = 128
         self.TAU = 0.005
         self.LR = 1e-4
         self.GAMMA = 0.99
+        self.EPS_DECAY = EPS_DECAY
         # Get number of actions from gym action space
         n_actions = env.action_space.n
         # Get the number of state observations
@@ -103,10 +104,10 @@ class RLModel:
     def caculate_threshold(self):
         EPS_START = 0.9
         EPS_END = 0.05
-        EPS_DECAY = 10000
+        # EPS_DECAY = 10000
 
         eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-                        math.exp(-1. * self.steps_done / EPS_DECAY)
+                        math.exp(-1. * self.steps_done / self.EPS_DECAY)
         return eps_threshold
         
         
