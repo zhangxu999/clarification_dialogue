@@ -33,7 +33,7 @@ class EmbeddingModel:
             self.mapping[key] = value
             self.new_item += 1
             
-        if self.new_item> 100:
+        if self.new_item> 400:
             self.save()
         return value
             
@@ -75,7 +75,7 @@ class Unmasker:
             value = self.get_mask_words(key, top_k)
             self.mapping[(key, top_k)] = value
             self.new_item += 1
-        if self.new_item> 100:
+        if self.new_item> 400:
             self.save()
         return value
     
