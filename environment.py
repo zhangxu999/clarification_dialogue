@@ -172,8 +172,6 @@ class User:
                             [False, False]]
         if len(option_words)==0:
             terminated = True
-        elif (action == Action.EXPLAIN.value and self.explained):
-            terminated = True
         else:
             terminated = terminated_table[action][int(is_right)]
         
@@ -494,8 +492,8 @@ class DialougeEnv:
         if action == Action.EXPLAIN.value:
             new_option_words, mask_text = self.get_option_words_by_llm(self.context_info, more_context=True)
             self.agent.push_option_words(new_option_words)
-            self.context_info['option_words'] = option_words
-            self.context_info['mask_text'] = mask_text
+            self.history[-2]['new_candicated'] = new_option_words
+            # self.context_info['mask_text'] = mask_text
 
             
 
