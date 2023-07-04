@@ -104,19 +104,30 @@ class User:
         context = self.contexts[context_id]['context']
         self.target = target = self.contexts[context_id]['targets'][0]
         target_text = target['target']
-        self.lemma_target = lemma_target = lemmatizer.lemmatize(target_text)
+        self.lemma_target = lemma_target = nlp(target_text)[0].lemma_
         offset = target['offset']
         substitutes = [(sub['substitute'],sub['label_score']) for sub in target['substitutes']]
         sorted_subs = sorted(substitutes,key=lambda x:x[1],reverse=True)
         sorted_subs = [(w,s) for w,s in sorted_subs if len(w.split())==1][:subs_num]
-        self.lemma_subs = lemma_subs = [(lemmatizer.lemmatize(w),s) for (w,s) in sorted_subs]
-        # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_sub_maps = }
-        self.lemma_sub_maps = {k:v for k,v in self.lemma_subs}
-        self.highscore_subs = {k:v for k,v in self.lemma_subs[:5]}
         
-        self.highscore_subs[self.lemma_target] = 1.5
+        
+        # self.lemma_subs = lemma_subs = [(lemmatizer.lemmatize(w),s) for (w,s) in sorted_subs]
+        # # labels = [self.swords['substitute_labels'][sid] for sid in self.tid_to_sids[target_sub_maps = }
+        # self.lemma_sub_maps = {k:v for k,v in self.lemma_subs}
+        # self.highscore_subs = {k:v for k,v in self.lemma_subs[:5]}
+        # self.highscore_subs[self.lemma_target] = 1.5
+        
+        self.highscore_subs = {self.lemma_target:1}
+        for w,s in sorted_subs:
+            lemma_word = nlp(w)[0].lemma_
+            if lemma_word not in self.highscore_subs:
+                self.highscore_subs[lemma_word] = s
+            if len(self.highscore_subs)>5:
+                break
+        
+        
         question = {'text':context, 'target':target_text, 'lemma_target':lemma_target
-                    ,'substitutes':sorted_subs,'lemma_subs':lemma_subs,'offset':offset,'role':'user'}
+                    ,'substitutes':self.highscore_subs,'lemma_subs':lemma_subs,'offset':offset,'role':'user'}
         return question, context_id
     
     def is_find_subs(self):
@@ -470,7 +481,16 @@ class DialougeEnv:
         
         origin_words = self.mask_model.get(mask_text, top_k=20)
         words = [(w,s) for w,s in origin_words if w not in constant.filter_words]
-        lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:options_num]]
+        # lemmatized_words = [(lemmatizer.lemmatize(w),s) for w,s in words[:options_num]]
+        
+        lemmatized_words = {}
+        for w,s in words:
+            lemma_word = nlp(w)[0].lemma_
+            if lemma_word not in lemmatized_words:
+                lemmatized_words[lemma_word] = s
+            if len(lemmatized_words)>=options_num:
+                break
+        lemmatized_words = [(w,s) for w,s in sorted(lemmatized_words.items(),key=lambda x:x[1],reverse=True)]
         # print(origin_words,'-----------------\n',words,'-----------------\n',lemmatized_words)
         return lemmatized_words, mask_text
         
