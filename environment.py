@@ -127,7 +127,7 @@ class User:
         
         
         question = {'text':context, 'target':target_text, 'lemma_target':lemma_target
-                    ,'substitutes':self.highscore_subs,'lemma_subs':lemma_subs,'offset':offset,'role':'user'}
+                    ,'substitutes':self.highscore_subs, 'formask_subs': sorted_subs,'offset':offset,'role':'user'}
         return question, context_id
     
     def is_find_subs(self):
@@ -476,7 +476,7 @@ class DialougeEnv:
         # if (context_id in self.option_mapping) and use_cache:
         #     return self.option_mapping[context_id]
         
-        text, offset, target, substitutes = question['text'], question['offset'], question['target'], question['substitutes'][:5]
+        text, offset, target, substitutes = question['text'], question['offset'], question['target'], question['formask_subs'][:5]
         mask_text = self.generate_mask_text(text, offset, target, substitutes,more_context)
         
         origin_words = self.mask_model.get(mask_text, top_k=20)
@@ -582,7 +582,7 @@ class DialougeEnv:
         
         context_info,context_id = self.user.init_dialoag(context_id,subs_num=15)
         
-        option_words,mask_text = self.get_option_words_by_llm(context_info, use_cache=True,options_num=5)
+        option_words,mask_text = self.get_option_words_by_llm(context_info, use_cache=True,options_num=10)
         
         
         self.agent.asked_words.clear()
@@ -595,7 +595,7 @@ class DialougeEnv:
         self.context_info = context_info
         self.context_id = context_id
         self.substitutes = context_info['substitutes']
-        self.lemma_subs = context_info['lemma_subs']
+        # self.lemma_subs = context_info['lemma_subs']
         self.target = context_info['target']
         self.lemma_target = context_info['lemma_target']
         self.history.append(context_info)
@@ -628,6 +628,6 @@ class DialougeEnv:
         if self.debug:
             print("#################################################################")
             print(self.target,self.lemma_target)
-            print(self.lemma_subs[:10])
+            print(self.substitutes)
             print(option_words)
         return embedding, info
